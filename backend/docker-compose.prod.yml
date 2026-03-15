@@ -65,6 +65,11 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_ENV: production
+        NEXT_PUBLIC_KITCHEN_WAREHOUSE_ID: ${NEXT_PUBLIC_KITCHEN_WAREHOUSE_ID:-}
+        NEXT_PUBLIC_BAR_WAREHOUSE_ID: ${NEXT_PUBLIC_BAR_WAREHOUSE_ID:-}
+        NEXT_PUBLIC_BRAND_NAME: ${NEXT_PUBLIC_BRAND_NAME:-Resident Restaurant}
     container_name: inventory_frontend
     restart: unless-stopped
     depends_on:
@@ -72,7 +77,6 @@ services:
         condition: service_healthy
     environment:
       API_BASE_URL: http://api:8000
-      NEXT_PUBLIC_APP_ENV: production
     expose:
       - "3000"
 

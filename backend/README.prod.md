@@ -4,25 +4,45 @@
 
 1. Copy the template:
 
-```powershell
-Copy-Item .env.example .env
+```sh
+cp backend/.env.example backend/.env
 ```
 
-2. Set a strong `JWT_SECRET` in `.env`.
-3. Set strict `CORS_ALLOW_ORIGINS` (comma-separated, no `*`).
-4. Configure DB credentials:
-	- `POSTGRES_USER`/`POSTGRES_PASSWORD` — admin user (used for init/ops)
-	- `APP_DB_USER`/`APP_DB_PASSWORD` — app runtime user (non-superuser)
-5. Put TLS certs into `docker/nginx/certs/`:
-	- `fullchain.pem`
-	- `privkey.pem`
+2. Edit `backend/.env` — fill in all required values:
+   - `JWT_SECRET` — long random string (e.g. `openssl rand -hex 32`)
+   - `CORS_ALLOW_ORIGINS` — your domain, e.g. `https://your-domain.com`
+   - `POSTGRES_PASSWORD` / `APP_DB_PASSWORD` — strong unique passwords
+   - `DATABASE_URL` — update with the same `APP_DB_PASSWORD`
+   - `NEXT_PUBLIC_KITCHEN_WAREHOUSE_ID` / `NEXT_PUBLIC_BAR_WAREHOUSE_ID` —
+     set after first deploy once warehouse IDs are known (see step 4)
 
-## 2) Start services
+## 2) Generate TLS certificates
 
-From `backend/` run:
+**Self-signed (for first deploy / staging):**
 
-```powershell
-docker compose -f docker-compose.prod.yml up -d --build
+```sh
+sh backend/docker/nginx/gen-certs.sh
+```
+
+This creates `backend/docker/nginx/certs/fullchain.pem` and `privkey.pem`.
+These files are gitignored and persist on the server across `git pull`.
+
+**Let's Encrypt (recommended for production):**
+
+```sh
+certbot certonly --standalone -d your-domain.com
+cp /etc/letsencrypt/live/your-domain.com/fullchain.pem backend/docker/nginx/certs/
+cp /etc/letsencrypt/live/your-domain.com/privkey.pem    backend/docker/nginx/certs/
+```
+
+Renew certs: `certbot renew` + restart proxy: `docker compose -f backend/docker-compose.prod.yml restart proxy`
+
+## 3) Start services
+
+From the repo root run:
+
+```sh
+docker compose -f backend/docker-compose.prod.yml up -d --build
 ```
 
 What happens on start:
@@ -30,14 +50,35 @@ What happens on start:
 - `db` init script creates/updates `APP_DB_USER` with non-superuser privileges.
 - `api` runs `alembic upgrade head` automatically.
 - `api` starts with `gunicorn` + `uvicorn` worker on internal port `8000`.
-- `proxy` terminates HTTPS (443) and forwards to `api`.
-- `backup` runs `pg_dump` every `BACKUP_INTERVAL_SECONDS` (default daily) and keeps dumps for `BACKUP_RETENTION_DAYS`.
+- `frontend` is built with `NEXT_PUBLIC_*` vars embedded in the client bundle.
+- `proxy` terminates HTTPS (443) and forwards to `frontend` and `api`.
+- `backup` runs `pg_dump` every `BACKUP_INTERVAL_SECONDS` (default daily).
 
-## 3) Verify
+## 4) Set warehouse IDs (first deploy only)
 
-```powershell
-docker compose -f docker-compose.prod.yml ps
-Invoke-WebRequest https://localhost/health -UseBasicParsing
+After the first deploy, look up the warehouse IDs:
+
+```sh
+docker compose -f backend/docker-compose.prod.yml exec api \
+  python -c "from app.db.session import SessionLocal; from app.models.warehouse import Warehouse; db = SessionLocal(); [print(w.id, w.name) for w in db.query(Warehouse).all()]"
+```
+
+Update `backend/.env`:
+```dotenv
+NEXT_PUBLIC_KITCHEN_WAREHOUSE_ID=<kitchen_id>
+NEXT_PUBLIC_BAR_WAREHOUSE_ID=<bar_id>
+```
+
+Then rebuild the frontend:
+```sh
+docker compose -f backend/docker-compose.prod.yml up -d --build frontend
+```
+
+## 5) Verify
+
+```sh
+docker compose -f backend/docker-compose.prod.yml ps
+curl -k https://localhost/health
 ```
 
 Expected health response:
@@ -46,17 +87,18 @@ Expected health response:
 {"ok": true}
 ```
 
-## 4) Logs
+## 6) Logs
 
-```powershell
-docker compose -f docker-compose.prod.yml logs -f api
-docker compose -f docker-compose.prod.yml logs -f db
-docker compose -f docker-compose.prod.yml logs -f backup
+```sh
+docker compose -f backend/docker-compose.prod.yml logs -f api
+docker compose -f backend/docker-compose.prod.yml logs -f db
+docker compose -f backend/docker-compose.prod.yml logs -f backup
 ```
 
-## 5) Backup and retention
+## 7) Backup and retention
 
 Backups are stored in Docker volume `pgbackups` as `*.dump` (custom pg_dump format).
+
 
 Defaults:
 - interval: `86400` seconds (daily)
