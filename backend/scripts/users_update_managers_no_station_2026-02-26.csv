@@ -1,0 +1,3 @@
+username,password,role,station_name,station_id,department,default_warehouse_id,is_active
+vanya,,souschef,,,kitchen,14,true
+ramil,,chef,,,kitchen,14,true

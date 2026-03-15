@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>RESINT — Нет соединения</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8f9fa;
+    color: #1a1a1a;
+    padding: env(safe-area-inset-top, 0) 1rem env(safe-area-inset-bottom, 0);
+  }
+  .card {
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    padding: 2.5rem 2rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .icon {
+    width: 56px; height: 56px;
+    margin: 0 auto 1.25rem;
+    border-radius: 12px;
+    background: #0d9488;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 22px;
+  }
+  h1 { font-size: 1.125rem; font-weight: 600; margin-bottom: .5rem; }
+  p  { font-size: .875rem; color: #64748b; line-height: 1.5; margin-bottom: 1.5rem; }
+  button {
+    appearance: none; border: none; cursor: pointer;
+    background: #0d9488; color: #fff;
+    font-size: .875rem; font-weight: 500;
+    padding: .625rem 1.5rem;
+    border-radius: 8px;
+    transition: background .15s;
+  }
+  button:hover { background: #0f766e; }
+  button:active { background: #115e59; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon" aria-hidden="true">RI</div>
+  <h1>Нет соединения</h1>
+  <p>Проверьте интернет-подключение и попробуйте снова.</p>
+  <button onclick="location.reload()">Обновить</button>
+</div>
+</body>
+</html>

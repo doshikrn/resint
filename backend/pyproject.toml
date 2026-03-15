@@ -1,0 +1,29 @@
+[project]
+name = "resint-backend"
+version = "0.3.0"
+description = "RESINT — Resident Restaurant Inventory System (backend)"
+authors = [{ name = "Resident Restaurant" }]
+license = { text = "Proprietary — All rights reserved" }
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "B008",   # function call (Depends) in argument defaults — standard FastAPI DI pattern
+    "B904",   # raise without from inside except — intentional HTTP error replacement
+    "UP017",  # use datetime.UTC alias — keeping timezone.utc for broader compat
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/routers/*.py" = ["E402"]  # module-level import not at top — clock import after router init
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"

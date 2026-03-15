@@ -1,0 +1,12 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+inventory.db
+.git
+.gitignore
+alembic/__pycache__
+app/__pycache__
+*.log

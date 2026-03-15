@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Run Fullstack (Backend + Frontend)",
+      "configurations": ["Backend: FastAPI (Postgres)", "Frontend: Dev Server"],
+      "preLaunchTask": "cleanup: free ports 3000+8000",
+      "stopAll": true
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Backend: FastAPI (Postgres)",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "DATABASE_URL": "postgresql+psycopg://inventory:inventory@localhost:5432/inventory",
+        "JWT_SECRET": "local-debug-secret"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Frontend: Dev Server",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"],
+      "cwd": "${workspaceFolder}/frontend",
+      "console": "integratedTerminal"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+username,password,role,station_name,station_id,department,default_warehouse_id,is_active
+ayan,P7m2k9Qa,cook,Холодный Цех,,kitchen,,true
+venera,K4t8m2Lp,cook,Холодный Цех,,kitchen,,true
+mahmud,N6q3z8Rb,cook,Завтраки,,kitchen,,true
+artur,V2p9m7Dx,cook,Горячий Цех (Супы),,kitchen,,true
+damir,H8r4k2Ts,cook,Горячий Цех (Супы),,kitchen,,true
+zhansaya,M3w7p9Ke,cook,Завтраки,,kitchen,,true
+aynura,T5n2q8Lv,cook,Завтраки,,kitchen,,true
+nurken,R9k3m6Pw,cook,Горячий Цех (Парик),,kitchen,,true
+nurbek,Q4v8t2Mn,cook,Горячий Цех (Парик),,kitchen,,true
+david,Z7p2k5Rh,cook,Завтраки,,kitchen,,true
+yusuf,B6m9q3Tk,cook,Горячий Цех (Парик),,kitchen,,true
+vanya,X3t7p4Lm,souschef,Раздача,,kitchen,,true
+ramil,W8k2n6Qp,chef,Раздача,,kitchen,,true

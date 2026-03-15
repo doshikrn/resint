@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cleanup: free ports 3000+8000",
+      "type": "shell",
+      "command": "$ErrorActionPreference='SilentlyContinue'; $ports = @(3000, 8000); foreach ($port in $ports) { $conns = Get-NetTCPConnection -LocalPort $port -State Listen; foreach ($conn in $conns) { try { Stop-Process -Id $conn.OwningProcess -Force } catch {} } }; Start-Sleep -Milliseconds 250; exit 0",
+      "problemMatcher": []
+    }
+  ]
+}

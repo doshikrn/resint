@@ -1,0 +1,6 @@
+username,full_name,password,role,station_name,station_id,department,default_warehouse_id,is_active
+chef.main,Шеф,ChangeMe123!,chef,Горячий Цех (Супы),,kitchen,1,true
+sous.kitchen1,Су-шеф,ChangeMe123!,souschef,Горячий Цех (Парик),,kitchen,1,true
+cook.cold1,Повар холодного цеха,ChangeMe123!,cook,Холодный Цех,,kitchen,1,true
+cook.sushi1,Повар суши,ChangeMe123!,cook,Суши,,kitchen,1,true
+cook.breakfast1,Повар завтраков,ChangeMe123!,cook,Завтраки,,kitchen,1,true
