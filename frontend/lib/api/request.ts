@@ -77,7 +77,7 @@ export async function probeBackendHealth(timeoutMs = 4000): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const response = await fetch(toProxyUrl("/health"), {
+    await fetch(toProxyUrl("/health"), {
       method: "GET",
       signal: controller.signal,
       cache: "no-store",

@@ -201,6 +201,7 @@ function BrandIdentity() {
       {logoLoadFailed ? (
         <Package className="h-10 w-10 shrink-0" />
       ) : (
+        /* eslint-disable-next-line @next/next/no-img-element */
         <img
           src={BRAND_LOGO_SRC}
           alt={BRAND_NAME}
@@ -218,6 +219,7 @@ function HeaderWordmark() {
   return (
     <div className="flex select-none items-center gap-4 leading-none">
       {!logoLoadFailed ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
         <img
           src={BRAND_LOGO_SRC}
           alt={BRAND_NAME}

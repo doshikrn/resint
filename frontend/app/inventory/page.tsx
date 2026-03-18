@@ -630,7 +630,7 @@ export default function InventoryPage() {
       countedOutsideZone: false,
       reason: undefined,
     });
-  }, [editEntryMutation, editEntryState, editQty, editReason, inventoryView, reportSessionId, session?.id, setToastMessage, t]);
+  }, [editEntryMutation, editEntryState, editQty, inventoryView, reportSessionId, session?.id, setToastMessage, t]);
 
   const handleDeleteEntry = useCallback((entry: InventoryEntry) => {
     if (!reportSessionId || deleteEntryMutation.isPending) return;

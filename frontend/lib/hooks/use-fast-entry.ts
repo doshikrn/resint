@@ -153,12 +153,9 @@ export function useFastEntry(params: UseFastEntryParams) {
 
   const {
     isOnline,
-    isSyncing,
     offlineQueue,
     setOfflineQueue,
     syncStatus,
-    isSyncingQueueRef,
-    syncOfflineQueue,
     handleSyncRetry,
     handleDismissConflict,
     handleQueueRetryOne,
@@ -177,7 +174,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     setCatalogItems,
     catalogLoading,
     catalogLoadError,
-    catalogSearchIndex,
     searchResults,
   } = useCatalogFetch({ session, isClosed, inventoryView, debouncedSearchTerm, warehouseId: selectedWarehouseId, t });
 
@@ -709,7 +705,7 @@ export function useFastEntry(params: UseFastEntryParams) {
 
   // ── Submission pipeline ────────────────────────────────────────────
 
-  const { enqueueEntry, submitEntryWithQuantity, submitEntry, savePending } = useEntrySubmit({
+  const { submitEntryWithQuantity, submitEntry, savePending } = useEntrySubmit({
     session,
     isClosed,
     selectedItem,
