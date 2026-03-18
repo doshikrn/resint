@@ -565,14 +565,22 @@ def _build_entry_contributors_map(
 
 
 def _next_revision_no(db: Session, warehouse_id: int) -> int:
-    current = (
-        db.query(func.max(InventorySession.revision_no))
-        .filter(InventorySession.warehouse_id == warehouse_id)
-        .scalar()
-    )
-    if current is None:
-        return 1
-    return int(current) + 1
+    """Return the smallest positive integer not used by any non-deleted
+    session in this warehouse.  This allows soft-deleted revision numbers
+    to be reused."""
+    used = {
+        row[0]
+        for row in db.query(InventorySession.revision_no)
+        .filter(
+            InventorySession.warehouse_id == warehouse_id,
+            InventorySession.deleted_at.is_(None),
+        )
+        .all()
+    }
+    n = 1
+    while n in used:
+        n += 1
+    return n
 
 
 def _create_draft_session(

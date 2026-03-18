@@ -7,7 +7,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
     func,
     text,
 )
@@ -30,7 +29,16 @@ class InventorySession(Base):
             postgresql_where=text("status='draft'"),
             sqlite_where=text("status='draft'"),
         ),
-        UniqueConstraint("warehouse_id", "revision_no", name="uq_inventory_sessions_revision_no"),
+        # Partial unique: revision_no is unique per warehouse only among
+        # non-deleted rows, so soft-deleted numbers can be reused.
+        Index(
+            "uq_inventory_sessions_revision_no",
+            "warehouse_id",
+            "revision_no",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
