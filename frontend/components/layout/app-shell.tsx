@@ -338,22 +338,22 @@ export function AppShell({ children }: AppShellProps) {
       window.localStorage.removeItem(CURRENT_USER_CACHE_KEY);
     }
 
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => {
-      controller.abort();
-    }, 1200);
-
-    void fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store",
-      keepalive: true,
-      signal: controller.signal,
-    })
-      .catch(() => {})
-      .finally(() => {
-        window.clearTimeout(timeoutId);
+    // Wait for cookie clearing before navigating — otherwise the middleware
+    // sees stale httpOnly cookies and redirects back to a protected route,
+    // causing a 1-2s broken partial render before the real redirect.
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 1500);
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
       });
+      window.clearTimeout(timeoutId);
+    } catch {
+      // Timeout or network error — navigate anyway
+    }
 
     window.location.replace("/login");
   }
@@ -365,7 +365,7 @@ export function AppShell({ children }: AppShellProps) {
           className="pointer-events-none fixed inset-0 bg-[radial-gradient(1200px_500px_at_50%_-50%,hsl(var(--primary)/0.12),transparent)]"
           aria-hidden="true"
         />
-        <div className="relative">{children}</div>
+        <div className="relative">{isLoggingOut ? null : children}</div>
       </div>
     );
   }
