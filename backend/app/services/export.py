@@ -218,7 +218,7 @@ def _unit_label_ru(unit: str) -> str:
     return unit
 
 
-def build_xlsx_accounting_template_export(rows: Iterable[dict], template_rows: int = 2000) -> bytes:
+def build_xlsx_accounting_template_export(rows: Iterable[dict]) -> bytes:
     if ACCOUNTING_TEMPLATE_PATH.exists():
         workbook = load_workbook(filename=ACCOUNTING_TEMPLATE_PATH)
         if "Товары" not in workbook.sheetnames:
@@ -235,30 +235,30 @@ def build_xlsx_accounting_template_export(rows: Iterable[dict], template_rows: i
 
     data_start_row = 8
     normalized_rows = list(rows)
-    rows_to_render = max(template_rows, len(normalized_rows))
 
-    for index in range(rows_to_render):
+    # Populate actual data rows
+    for index, row in enumerate(normalized_rows):
         excel_row = data_start_row + index
-        if index < len(normalized_rows):
-            row = normalized_rows[index]
-            goods_sheet.cell(row=excel_row, column=1, value=str(row.get("ProductCode", "")))
-            goods_sheet.cell(row=excel_row, column=2, value=str(row.get("Item", "")))
-            goods_sheet.cell(
-                row=excel_row, column=3, value=_unit_label_ru(str(row.get("Unit", "")))
-            )
+        goods_sheet.cell(row=excel_row, column=1, value=str(row.get("ProductCode", "")))
+        goods_sheet.cell(row=excel_row, column=2, value=str(row.get("Item", "")))
+        goods_sheet.cell(
+            row=excel_row, column=3, value=_unit_label_ru(str(row.get("Unit", "")))
+        )
 
-            qty = row.get("Qty")
-            qty_cell = goods_sheet.cell(row=excel_row, column=4)
-            if qty is None:
-                qty_cell.value = "-"
-            else:
-                qty_cell.value = qty
-                qty_cell.number_format = "0.###"
+        qty = row.get("Qty")
+        qty_cell = goods_sheet.cell(row=excel_row, column=4)
+        if qty is None:
+            qty_cell.value = "-"
         else:
-            goods_sheet.cell(row=excel_row, column=1, value="")
-            goods_sheet.cell(row=excel_row, column=2, value="")
-            goods_sheet.cell(row=excel_row, column=3, value="")
-            goods_sheet.cell(row=excel_row, column=4, value="")
+            qty_cell.value = qty
+            qty_cell.number_format = "0.###"
+
+    # Delete all trailing empty rows below the last data row
+    last_data_row = data_start_row + len(normalized_rows) - 1
+    total_rows = goods_sheet.max_row
+    trailing_count = total_rows - last_data_row
+    if trailing_count > 0:
+        goods_sheet.delete_rows(last_data_row + 1, trailing_count)
 
     output = BytesIO()
     workbook.save(output)
