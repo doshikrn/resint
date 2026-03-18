@@ -35,6 +35,11 @@ export function useOfflineSync(params: {
 
   const isSyncingQueueRef = useRef(false);
 
+  // Keep a stable ref to onSyncSuccess so syncOfflineQueue doesn't need to
+  // re-create every time the parent re-renders with a new inline arrow function.
+  const onSyncSuccessRef = useRef(onSyncSuccess);
+  onSyncSuccessRef.current = onSyncSuccess;
+
   // ── Sync callback ──────────────────────────────────────────────────
 
   const syncOfflineQueue = useCallback(async () => {
@@ -67,111 +72,124 @@ export function useOfflineSync(params: {
     let sentCount = 0;
     let conflictCount = 0;
 
-    for (const item of snapshot) {
-      if (item.status === "failed_conflict") {
-        nextQueue.push(item);
-        continue;
-      }
-      if (item.next_retry_at && item.next_retry_at > now) {
-        nextQueue.push(item);
-        continue;
-      }
+    try {
+      for (const item of snapshot) {
+        if (item.status === "failed_conflict") {
+          nextQueue.push(item);
+          continue;
+        }
+        if (item.next_retry_at && item.next_retry_at > now) {
+          nextQueue.push(item);
+          continue;
+        }
 
-      try {
-        await saveInventoryEntry({
-          sessionId: item.session_id,
-          itemId: item.item_id,
-          quantity: item.qty,
-          mode: item.mode,
-          stationId: item.station_id ?? null,
-          countedOutsideZone: false,
-          idempotencyKey: item.idempotency_key,
-          timeoutMs: 8000,
-          expectedVersion: item.mode === "set" ? (item.expected_version ?? null) : null,
-        });
-        sentCount += 1;
-      } catch (error) {
-        if (error instanceof ApiRequestError && error.status === 409) {
-          if (error.body.includes("VERSION_CONFLICT")) {
+        try {
+          await saveInventoryEntry({
+            sessionId: item.session_id,
+            itemId: item.item_id,
+            quantity: item.qty,
+            mode: item.mode,
+            stationId: item.station_id ?? null,
+            countedOutsideZone: false,
+            idempotencyKey: item.idempotency_key,
+            timeoutMs: 8000,
+            expectedVersion: item.mode === "set" ? (item.expected_version ?? null) : null,
+          });
+          sentCount += 1;
+        } catch (error) {
+          if (error instanceof ApiRequestError && error.status === 409) {
+            if (error.body.includes("VERSION_CONFLICT")) {
+              nextQueue.push({
+                ...item,
+                status: "failed_conflict",
+                next_retry_at: null,
+                error_code: "conflict",
+              });
+              conflictCount += 1;
+              continue;
+            }
+
+            if (error.body.includes("SESSION_CLOSED")) {
+              queryClient.setQueryData(activeSessionQueryKey, null);
+              void queryClient.invalidateQueries({ queryKey: activeSessionQueryKey });
+              nextQueue.push({
+                ...item,
+                status: "failed",
+                next_retry_at: null,
+                error_code: "session_closed",
+              });
+              conflictCount += 1;
+              continue;
+            }
+            if (error.body.includes("ACCESS_DENIED") || error.body.includes("FORBIDDEN")) {
+              nextQueue.push({
+                ...item,
+                status: "failed",
+                next_retry_at: null,
+                error_code: "access_denied",
+              });
+              conflictCount += 1;
+              continue;
+            }
+            // Unknown 409 — keep in queue so the user can review it rather
+            // than silently dropping the entry.
             nextQueue.push({
               ...item,
               status: "failed_conflict",
               next_retry_at: null,
-              error_code: "conflict",
+              error_code: "conflict_unknown",
             });
             conflictCount += 1;
             continue;
           }
 
-          if (error.body.includes("SESSION_CLOSED")) {
-            queryClient.setQueryData(activeSessionQueryKey, null);
-            void queryClient.invalidateQueries({ queryKey: activeSessionQueryKey });
-            nextQueue.push({
-              ...item,
-              status: "failed",
-              next_retry_at: null,
-              error_code: "session_closed",
-            });
-            conflictCount += 1;
-            continue;
-          }
-          if (error.body.includes("ACCESS_DENIED") || error.body.includes("FORBIDDEN")) {
-            nextQueue.push({
-              ...item,
-              status: "failed",
-              next_retry_at: null,
-              error_code: "access_denied",
-            });
-            conflictCount += 1;
-            continue;
-          }
-          conflictCount += 1;
-          continue;
+          const isNetwork =
+            error instanceof ApiRequestError ? error.status === 0 : !(error instanceof ApiRequestError);
+          const errorCode: string = isNetwork
+            ? "network"
+            : error instanceof ApiRequestError && error.status === 403
+              ? "access_denied"
+              : "unknown";
+          const retryCount = item.retry_count + 1;
+          const delayMs = Math.min(120000, Math.pow(2, item.retry_count) * 2000);
+          nextQueue.push({
+            ...item,
+            retry_count: retryCount,
+            status: "failed",
+            next_retry_at: Date.now() + delayMs,
+            error_code: errorCode,
+          });
         }
-
-        const isNetwork =
-          error instanceof ApiRequestError ? error.status === 0 : !(error instanceof ApiRequestError);
-        const errorCode: string = isNetwork
-          ? "network"
-          : error instanceof ApiRequestError && error.status === 403
-            ? "access_denied"
-            : "unknown";
-        const retryCount = item.retry_count + 1;
-        const delayMs = Math.min(120000, Math.pow(2, item.retry_count) * 2000);
-        nextQueue.push({
-          ...item,
-          retry_count: retryCount,
-          status: "failed",
-          next_retry_at: Date.now() + delayMs,
-          error_code: errorCode,
-        });
       }
-    }
 
-    await updateOfflineEntryQueue(nextQueue);
-    setOfflineQueue(nextQueue);
-    isSyncingQueueRef.current = false;
-    setIsSyncing(false);
+      await updateOfflineEntryQueue(nextQueue);
+      setOfflineQueue(nextQueue);
 
-    if (sentCount > 0) {
-      onSyncSuccess?.();
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["recent-entries"] }),
-        queryClient.invalidateQueries({ queryKey: ["recent-events"] }),
-        queryClient.invalidateQueries({ queryKey: ["session-entries"] }),
-        queryClient.invalidateQueries({ queryKey: ["session-audit"] }),
-        queryClient.invalidateQueries({ queryKey: ["session-audit-log"] }),
-        queryClient.invalidateQueries({ queryKey: ["session-progress"] }),
-      ]);
-      if (conflictCount === 0) {
-        setToastMessage(t("toast.synced"));
+      if (sentCount > 0) {
+        onSyncSuccessRef.current?.();
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["recent-entries"] }),
+          queryClient.invalidateQueries({ queryKey: ["recent-events"] }),
+          queryClient.invalidateQueries({ queryKey: ["session-entries"] }),
+          queryClient.invalidateQueries({ queryKey: ["session-audit"] }),
+          queryClient.invalidateQueries({ queryKey: ["session-audit-log"] }),
+          queryClient.invalidateQueries({ queryKey: ["session-progress"] }),
+          queryClient.invalidateQueries({ queryKey: ["items-frequent"] }),
+          queryClient.invalidateQueries({ queryKey: ["items-recent"] }),
+        ]);
+        if (conflictCount === 0) {
+          setToastMessage(t("toast.synced"));
+        }
       }
-    }
 
-    if (conflictCount > 0) {
-      setToastMessage(t("toast.conflict"));
+      if (conflictCount > 0) {
+        setToastMessage(t("toast.conflict"));
+      }
+    } finally {
+      isSyncingQueueRef.current = false;
+      setIsSyncing(false);
     }
-  }, [activeSessionQueryKey, onSyncSuccess, queryClient, setToastMessage, t]);
+  }, [activeSessionQueryKey, queryClient, setToastMessage, t]);
 
   const handleSyncRetry = useCallback(() => {
     void syncOfflineQueue();
