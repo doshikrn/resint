@@ -86,7 +86,9 @@ export async function probeBackendHealth(timeoutMs = 4000): Promise<boolean> {
     clearTimeout(timer);
     // Any response (even 4xx/5xx) means the backend process is up;
     // we are probing network reachability, not business logic.
-    return response.ok;
+    // NOTE: credentials:"omit" means no cookies → the proxy returns 401.
+    // That is still a valid HTTP response proving the server is reachable.
+    return true;
   } catch {
     return false;
   }

@@ -1697,6 +1697,14 @@ def add_or_update_entry(
         requested_station_id=payload.station_id,
     )
     outside_zone_note = _normalize_outside_zone_note(payload.outside_zone_note)
+
+    # Use the Idempotency-Key as the event's request_id so the frontend
+    # can correlate server events with offline-queue items for dedup.
+    # Fall back to the x-request-id header if no idempotency key was sent.
+    effective_request_id = (
+        idempotency_key.strip() if idempotency_key else request_id
+    )
+
     if mode not in (EntryAction.ADD, EntryAction.SET):
         raise HTTPException(status_code=400, detail="mode must be 'add' or 'set'")
 
@@ -1737,7 +1745,7 @@ def add_or_update_entry(
             counted_outside_zone=counted_outside_zone,
             counted_by_zone_id=counted_by_zone_id,
             outside_zone_note=outside_zone_note,
-            request_id=request_id,
+            request_id=effective_request_id,
             before_quantity=None,
             after_quantity=initial_quantity,
             created_at=now,
@@ -1833,7 +1841,7 @@ def add_or_update_entry(
             counted_outside_zone=counted_outside_zone,
             counted_by_zone_id=counted_by_zone_id,
             outside_zone_note=outside_zone_note,
-            request_id=request_id,
+            request_id=effective_request_id,
             before_quantity=before_quantity,
             after_quantity=new_quantity,
             created_at=now,
