@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { type QueryClient } from "@tanstack/react-query";
 
 import { ApiRequestError, saveInventoryEntry } from "@/lib/api/http";
+import { probeBackendHealth } from "@/lib/api/request";
 import {
   loadOfflineEntryQueue,
   updateOfflineEntryQueue,
@@ -60,6 +61,19 @@ export function useOfflineSync(params: {
   const syncOfflineQueue = useCallback(async () => {
     if (typeof window === "undefined" || !navigator.onLine || isSyncingQueueRef.current) return;
 
+    // ── Backend connectivity gate ────────────────────────────────────
+    // navigator.onLine only means the NIC has a link — it does NOT
+    // guarantee the API is reachable.  Probe the backend first;
+    // if it's unreachable, skip sync entirely so queued items stay
+    // visible and are never removed prematurely.
+    console.info("[offline-sync] probing backend…");
+    const backendUp = await probeBackendHealth(4000);
+    if (!backendUp) {
+      console.info("[offline-sync] probe failed — backend not reachable, skipping sync");
+      return;
+    }
+    console.info("[offline-sync] probe OK — backend reachable");
+
     let snapshot: Awaited<ReturnType<typeof loadOfflineEntryQueue>>;
     try {
       snapshot = await loadOfflineEntryQueue();
@@ -75,13 +89,13 @@ export function useOfflineSync(params: {
     setIsSyncing(true);
 
     // Cancel any in-flight TanStack Query refetches for recent data.
-    // When the browser fires 'online', TQ's refetchOnReconnect triggers
-    // refetches that race with this sync.  Those refetches hit the server
-    // BEFORE sync saves the entry, replacing optimistic cache data and
-    // making the entry vanish from the UI.
+    // Awaited (not fire-and-forget) so the cancellation completes
+    // before we start POSTing entries.
     const qc = queryClientRef.current;
-    void qc.cancelQueries({ queryKey: ["recent-entries"] });
-    void qc.cancelQueries({ queryKey: ["recent-events"] });
+    await Promise.all([
+      qc.cancelQueries({ queryKey: ["recent-entries"] }),
+      qc.cancelQueries({ queryKey: ["recent-events"] }),
+    ]);
 
     const now = Date.now();
     setOfflineQueue(
@@ -263,9 +277,13 @@ export function useOfflineSync(params: {
     })();
 
     const onOnline = () => {
-      console.info("[offline-sync] online event");
+      console.info("[offline-sync] online event — delaying 1.5 s for network to stabilise");
       setIsOnline(true);
-      void syncOfflineQueue();
+      // Small delay: the `online` event fires the instant the NIC has
+      // a link, but DNS/TCP/TLS may not be ready yet.  The probe in
+      // syncOfflineQueue will still gate on actual reachability, but
+      // waiting briefly avoids a wasted probe-fail cycle.
+      setTimeout(() => void syncOfflineQueue(), 1500);
     };
     const onOffline = () => {
       console.info("[offline-sync] offline event");

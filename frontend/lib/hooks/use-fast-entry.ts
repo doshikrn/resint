@@ -296,6 +296,10 @@ export function useFastEntry(params: UseFastEntryParams) {
     staleTime: 10_000,
     refetchInterval: 10_000,
     refetchOnWindowFocus: false,
+    // Disable automatic refetch on reconnect — the offline-sync hook
+    // handles invalidation AFTER queued entries are saved, preventing
+    // a race where the server returns data without the queued entry.
+    refetchOnReconnect: false,
   });
 
   const recentEventsQuery = useQuery({
@@ -305,6 +309,7 @@ export function useFastEntry(params: UseFastEntryParams) {
     staleTime: 10_000,
     refetchInterval: 10_000,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const sessionAuditQuery = useQuery({

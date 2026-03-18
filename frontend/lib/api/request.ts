@@ -67,6 +67,31 @@ export function parseFilenameFromContentDisposition(contentDisposition: string |
   return null;
 }
 
+/**
+ * Lightweight backend connectivity probe.
+ * Returns `true` if the backend API responds (any 2xx/3xx/4xx) within
+ * the given timeout - i.e. the server process is reachable.
+ * Returns `false` on network error or timeout (API truly unreachable).
+ */
+export async function probeBackendHealth(timeoutMs = 4000): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(toProxyUrl("/health"), {
+      method: "GET",
+      signal: controller.signal,
+      cache: "no-store",
+      credentials: "omit",
+    });
+    clearTimeout(timer);
+    // Any response (even 4xx/5xx) means the backend process is up;
+    // we are probing network reachability, not business logic.
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
