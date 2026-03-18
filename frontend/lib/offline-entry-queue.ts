@@ -1,6 +1,6 @@
 import { indexedDbSupported, OFFLINE_QUEUE_STORE, openOfflineDatabase } from "@/lib/offline-db";
 
-export type OfflineEntryStatus = "pending" | "syncing" | "failed" | "failed_conflict";
+export type OfflineEntryStatus = "pending" | "syncing" | "synced" | "failed" | "failed_conflict";
 
 export type OfflineEntryQueueItem = {
   idempotency_key: string;

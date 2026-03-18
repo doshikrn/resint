@@ -888,7 +888,9 @@ export function useFastEntry(params: UseFastEntryParams) {
     const pending = pendingRecent.map<RecentJournalEntry>((entry) => ({
       key: `queue-${entry.idempotency_key}`,
       itemId: entry.item_id,
-      status: entry.status,
+      // Map "synced" (POST succeeded, awaiting TQ confirmation) to
+      // "syncing" for display — the entry is transitioning to saved.
+      status: entry.status === "synced" ? "syncing" : entry.status,
       itemName: entry.item_name,
       quantity: entry.qty,
       unit: entry.unit,

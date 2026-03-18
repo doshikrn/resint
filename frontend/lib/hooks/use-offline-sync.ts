@@ -78,9 +78,11 @@ export function useOfflineSync(params: {
     try {
       snapshot = await loadOfflineEntryQueue();
     } catch {
+      console.warn("[offline-sync] loadOfflineEntryQueue threw, aborting sync");
       return;
     }
     if (snapshot.length === 0) {
+      console.info("[offline-sync] storage empty, clearing React queue state");
       setOfflineQueue([]);
       return;
     }
@@ -109,6 +111,7 @@ export function useOfflineSync(params: {
     const nextQueue: OfflineEntryQueueItem[] = [];
     let sentCount = 0;
     let conflictCount = 0;
+    const syncedKeys: string[] = [];
 
     console.info("[offline-sync] sync start", { items: snapshot.length });
 
@@ -116,6 +119,15 @@ export function useOfflineSync(params: {
       for (const item of snapshot) {
         if (item.status === "failed_conflict") {
           nextQueue.push(item);
+          continue;
+        }
+        // Items already marked synced (from a previous interrupted cycle)
+        // don't need to be re-sent — just carry them forward for
+        // confirmation after invalidateQueries.
+        if (item.status === "synced") {
+          nextQueue.push(item);
+          syncedKeys.push(item.idempotency_key);
+          sentCount += 1; // count as sent so invalidateQueries runs
           continue;
         }
         if (item.next_retry_at && item.next_retry_at > now) {
@@ -138,6 +150,11 @@ export function useOfflineSync(params: {
           });
           console.info("[offline-sync] sent OK", { key: item.idempotency_key });
           sentCount += 1;
+          syncedKeys.push(item.idempotency_key);
+          // Keep in queue as "synced" — will be removed ONLY after
+          // invalidateQueries confirms the server data is in the TQ cache.
+          // This prevents the entry vanishing if the refetch fails.
+          nextQueue.push({ ...item, status: "synced" as const });
         } catch (error) {
           const errInfo = error instanceof ApiRequestError
             ? { status: error.status, body: error.body.slice(0, 200) }
@@ -209,13 +226,13 @@ export function useOfflineSync(params: {
         }
       }
 
-      // Persist the updated queue to storage first.
+      // Persist queue WITH "synced" items — this is the safety net.
+      // If the browser refreshes or the component remounts before
+      // invalidateQueries finishes, the "synced" items are still in
+      // storage and will be carried forward on the next sync cycle.
       await updateOfflineEntryQueue(nextQueue);
+      console.info("[offline-sync] persisted queue", { total: nextQueue.length, syncedKeys });
 
-      // If items were successfully sent, invalidate queries and wait for
-      // the refetch to complete BEFORE updating the React queue state.
-      // This prevents a visual gap where the entry is absent from both
-      // the queue (pending) section and the server-fetched (saved) section.
       if (sentCount > 0) {
         console.info("[offline-sync] synced", { sentCount, conflictCount, remaining: nextQueue.length });
         onSyncSuccessRef.current?.();
@@ -229,17 +246,31 @@ export function useOfflineSync(params: {
           qc.invalidateQueries({ queryKey: ["items-frequent"] }),
           qc.invalidateQueries({ queryKey: ["items-recent"] }),
         ]);
+
+        // NOW the TQ cache has server data — safe to drop "synced" items.
+        const confirmedQueue = nextQueue.filter(
+          (i) => i.status !== "synced",
+        );
+        console.info("[offline-sync] confirmed, removing synced items", {
+          removed: syncedKeys,
+          remaining: confirmedQueue.length,
+        });
+
         if (conflictCount === 0) {
           setToastMessageRef.current(tRef.current("toast.synced"));
         }
+
+        // Update React state first (atomic with TQ cache in the same
+        // microtask), then persist to storage.
+        setOfflineQueue(confirmedQueue);
+        await updateOfflineEntryQueue(confirmedQueue);
+        return; // skip the final setOfflineQueue below
       }
 
       if (conflictCount > 0) {
         setToastMessageRef.current(tRef.current("toast.conflict"));
       }
 
-      // Update React state AFTER queries are refreshed so the entry
-      // transitions directly from "pending" to "saved" with no gap.
       setOfflineQueue(nextQueue);
     } finally {
       isSyncingQueueRef.current = false;
