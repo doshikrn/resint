@@ -69,7 +69,7 @@ services:
         NEXT_PUBLIC_APP_ENV: production
         NEXT_PUBLIC_KITCHEN_WAREHOUSE_ID: ${NEXT_PUBLIC_KITCHEN_WAREHOUSE_ID:-}
         NEXT_PUBLIC_BAR_WAREHOUSE_ID: ${NEXT_PUBLIC_BAR_WAREHOUSE_ID:-}
-        NEXT_PUBLIC_BRAND_NAME: ${NEXT_PUBLIC_BRAND_NAME:-Resident Restaurant}
+        NEXT_PUBLIC_BRAND_NAME: ${NEXT_PUBLIC_BRAND_NAME:-Resint}
     container_name: inventory_frontend
     restart: unless-stopped
     depends_on:

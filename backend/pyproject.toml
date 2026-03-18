@@ -1,8 +1,8 @@
 [project]
 name = "resint-backend"
 version = "0.3.0"
-description = "RESINT — Resident Restaurant Inventory System (backend)"
-authors = [{ name = "Resident Restaurant" }]
+description = "RESINT — Resint Inventory System (backend)"
+authors = [{ name = "Resint" }]
 license = { text = "Proprietary — All rights reserved" }
 requires-python = ">=3.11"
 
