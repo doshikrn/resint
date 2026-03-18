@@ -161,7 +161,7 @@ def main() -> int:
 
             for line_number, row in enumerate(reader, start=2):
                 try:
-                    username = (row.get("username") or "").strip()
+                    username = (row.get("username") or "").strip().lower()
                     if not username:
                         raise ValueError("username is required")
 

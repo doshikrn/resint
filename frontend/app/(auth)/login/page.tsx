@@ -54,6 +54,10 @@ export default function LoginPage() {
           throw new Error("Неверный логин или пароль");
         }
 
+        if (status === 403) {
+          throw new Error("Аккаунт заблокирован. Обратитесь к менеджеру.");
+        }
+
         if (status === 502 || status === 504) {
           throw new Error("Сервер недоступен. Проверьте, что backend и база данных запущены.");
         }

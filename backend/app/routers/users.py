@@ -305,7 +305,7 @@ def admin_create_user(
 ):
     _require_user_manage_role(current_user)
 
-    existing = db.query(User).filter(User.username == data.username).first()
+    existing = db.query(User).filter(User.username == data.username.strip().lower()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already taken")
 
@@ -321,7 +321,7 @@ def admin_create_user(
             raise HTTPException(status_code=404, detail="Warehouse not found")
 
     user = User(
-        username=data.username,
+        username=data.username.strip().lower(),
         full_name=data.full_name,
         password_hash=hash_password(data.password),
         role=validated_role,

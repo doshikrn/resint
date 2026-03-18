@@ -78,9 +78,14 @@ class LogoutOut(BaseModel):
 
 @router.post("/login", response_model=AuthTokensOut)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == data.username).first()
+    normalized = data.username.strip().lower()
+    user = db.query(User).filter(User.username == normalized).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.deleted_at is not None:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is deactivated")
 
     payload = _issue_tokens(db, user)
     db.commit()
