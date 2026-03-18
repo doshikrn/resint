@@ -106,7 +106,7 @@ function isStaticAsset(url) {
   // App icons
   if (p.startsWith("/icons/")) return true;
   // Brand assets
-  if (p.startsWith("/brand/")) return true;
+  if (p.startsWith("/brand/") || p === "/new_logo.svg") return true;
   // Font files
   if (/\.(woff2?|ttf|otf)$/i.test(p)) return true;
   return false;

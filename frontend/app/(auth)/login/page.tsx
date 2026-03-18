@@ -6,15 +6,12 @@ import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Resident Restaurant";
-const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/brand/logo-gold-mark.svg";
-const BRAND_WORDMARK_SRC =
-  process.env.NEXT_PUBLIC_BRAND_WORDMARK_SRC ?? "/brand/logo-gold-wordmark.svg";
+const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Resint";
+const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/new_logo.svg";
 
 export default function LoginPage() {
   const router = useRouter();
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
-  const [wordmarkLoadFailed, setWordmarkLoadFailed] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -82,21 +79,8 @@ export default function LoginPage() {
               <img
                 src={BRAND_LOGO_SRC}
                 alt={BRAND_NAME}
-                className="h-11 w-11 shrink-0 object-contain"
+                className="h-11 w-auto shrink-0 object-contain"
                 onError={() => setLogoLoadFailed(true)}
-              />
-            ) : (
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                RR
-              </div>
-            )}
-
-            {!wordmarkLoadFailed ? (
-              <img
-                src={BRAND_WORDMARK_SRC}
-                alt={`${BRAND_NAME} wordmark`}
-                className="h-6 w-auto max-w-[180px] object-contain"
-                onError={() => setWordmarkLoadFailed(true)}
               />
             ) : (
               <span className="text-sm font-semibold text-foreground">{BRAND_NAME}</span>

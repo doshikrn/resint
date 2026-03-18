@@ -468,7 +468,7 @@ const ru = {
   "items.issues_row_label": "Строка",
   "items.edit_title": "Редактирование",
   "items.save_button": "Сохранить",
-  "app.copyright": "© {year} Resident Hotels",
+  "app.copyright": "© {year} Resint",
   "pwa.ios_install_title": "Установите приложение",
   "pwa.ios_install_body": "Нажмите \"Поделиться\" внизу экрана, затем \"На экран «Домой»\".",
 } as const;

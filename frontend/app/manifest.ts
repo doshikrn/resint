@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "RESINT — Ревизия",
     short_name: "RESINT",
-    description: "Resident Restaurant Inventory System",
+    description: "Resint — Inventory System",
     start_url: "/inventory",
     scope: "/",
     display: "standalone",

@@ -470,7 +470,7 @@ const kk: Partial<Dictionary> = {
   "items.issues_row_label": "Жол",
   "items.edit_title": "Өңдеу",
   "items.save_button": "Сақтау",
-  "app.copyright": "© {year} Resident Hotels",
+  "app.copyright": "© {year} Resint",
   "pwa.ios_install_title": "Қосымшаны орнатыңыз",
   "pwa.ios_install_body": "Экранның төменгі жағындағы \"Бөлісу\" батырмасын, содан кейін \"Басты экранға қосу\" түймесін басыңыз.",
 };

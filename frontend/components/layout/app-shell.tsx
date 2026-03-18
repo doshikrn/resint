@@ -34,10 +34,8 @@ const APP_ENV = process.env.NEXT_PUBLIC_APP_ENV ?? "production";
 const ENV_BADGE_LABEL: Record<string, string> = { development: "DEV", staging: "STAGING" };
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
 
-const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Resident Restaurant";
-const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/brand/logo-gold-mark.svg";
-const BRAND_WORDMARK_SRC =
-  process.env.NEXT_PUBLIC_BRAND_WORDMARK_SRC ?? "/brand/logo-gold-wordmark.svg";
+const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Resint";
+const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/new_logo.svg";
 
 const ROLE_LABEL_FALLBACK: Record<string, string> = {
   cook: "Повар",
@@ -197,7 +195,6 @@ function NavList({
 
 function BrandIdentity() {
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
-  const [wordmarkLoadFailed, setWordmarkLoadFailed] = useState(false);
 
   return (
     <div className="flex w-full items-center gap-2">
@@ -207,17 +204,8 @@ function BrandIdentity() {
         <img
           src={BRAND_LOGO_SRC}
           alt={BRAND_NAME}
-          className="h-12 w-12 shrink-0 object-contain"
+          className="h-12 w-auto shrink-0 object-contain"
           onError={() => setLogoLoadFailed(true)}
-        />
-      )}
-
-      {wordmarkLoadFailed ? null : (
-        <img
-          src={BRAND_WORDMARK_SRC}
-          alt={`${BRAND_NAME} wordmark`}
-          className="ml-1 h-8 w-auto max-w-[172px] object-contain"
-          onError={() => setWordmarkLoadFailed(true)}
         />
       )}
     </div>
@@ -225,17 +213,18 @@ function BrandIdentity() {
 }
 
 function HeaderWordmark() {
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+
   return (
-    <div className="flex select-none items-center gap-6 leading-none">
-      <div className="flex flex-col items-center">
-        <p className="-mr-[0.26em] text-[42px] font-light uppercase tracking-[0.26em] text-foreground md:text-[52px]">
-          ZERE
-        </p>
-        <p className="-mt-1 text-[18px] font-normal tracking-wide text-foreground/90 md:text-[20px]">
-          restaurant
-        </p>
-      </div>
-      <div className="h-10 w-px bg-border/60" />
+    <div className="flex select-none items-center gap-4 leading-none">
+      {!logoLoadFailed ? (
+        <img
+          src={BRAND_LOGO_SRC}
+          alt={BRAND_NAME}
+          className="h-10 w-auto object-contain"
+          onError={() => setLogoLoadFailed(true)}
+        />
+      ) : null}
       <div className="flex flex-col items-start">
         <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground/70">
           Resint
