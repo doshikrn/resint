@@ -123,7 +123,7 @@ export default function InventoryPage() {
   // ── UI state (shared across views) ─────────────────────────────────
   const [editEntryState, setEditEntryState] = useState<EditEntryState | null>(null);
   const [editQty, setEditQty] = useState("");
-  const [editReason, setEditReason] = useState("");
+  const [_editReason, setEditReason] = useState("");
   const [selectedReportSessionId, setSelectedReportSessionId] = useState<number | null>(null);
   const [selectedReportItemId, setSelectedReportItemId] = useState<number | null>(null);
   const [reportsPanelTab, setReportsPanelTab] = useState<"items" | "people" | "history" | "audit">("items");

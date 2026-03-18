@@ -828,7 +828,7 @@ export function useFastEntry(params: UseFastEntryParams) {
       }
       chooseItem(item);
     },
-    [chooseItem],
+    [chooseItem, longPressHandledRef],
   );
 
   // ── Recent journal ─────────────────────────────────────────────────
