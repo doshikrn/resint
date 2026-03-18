@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Resint";
-const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/brand/logo.svg";
+const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/brand/logo.png";
 
 export default function LoginPage() {
   const router = useRouter();
