@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiRequestError,
@@ -23,16 +23,61 @@ export function useCatalogFetch(params: {
   isClosed: boolean;
   inventoryView: "revision" | "management" | "reports";
   debouncedSearchTerm: string;
+  warehouseId: number | null;
   t: (key: string) => string;
 }) {
-  const { session, isClosed, inventoryView, debouncedSearchTerm, t } = params;
+  const { session, isClosed, inventoryView, debouncedSearchTerm, warehouseId, t } = params;
 
   const [catalogItems, setCatalogItems] = useState<InventoryCatalogItem[] | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
   const [catalogRefreshTick, setCatalogRefreshTick] = useState(0);
 
-  // ── Fetch effect ───────────────────────────────────────────────────
+  // Track which warehouse the cache was restored for
+  const cacheRestoredForRef = useRef<number | null>(null);
+
+  // ── Early cache restore (no session needed) ────────────────────────
+  // Fires as soon as warehouseId is known (before the session query
+  // resolves), so search is usable from cached catalog immediately.
+
+  useEffect(() => {
+    if (inventoryView !== "revision" || !warehouseId) return;
+    if (cacheRestoredForRef.current === warehouseId) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const cached = await loadCatalogCache(warehouseId).catch(() => null);
+        if (cancelled) return;
+        cacheRestoredForRef.current = warehouseId;
+        if (cached?.items?.length) {
+          setCatalogItems(cached.items);
+        }
+      } catch {
+        // Ignore cache errors; network fetch will supply items
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inventoryView, warehouseId]);
+
+  // ── Clear items on warehouse change ────────────────────────────────
+
+  const prevWarehouseRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (warehouseId === prevWarehouseRef.current) return;
+    if (prevWarehouseRef.current !== null) {
+      setCatalogItems(null);
+      setCatalogLoadError(null);
+      cacheRestoredForRef.current = null;
+    }
+    prevWarehouseRef.current = warehouseId;
+  }, [warehouseId]);
+
+  // ── Network fetch (needs session) ──────────────────────────────────
 
   useEffect(() => {
     if (inventoryView !== "revision") {
@@ -40,8 +85,14 @@ export function useCatalogFetch(params: {
       return;
     }
 
-    if (!session?.id || !session.warehouse_id || isClosed) {
+    if (isClosed) {
       setCatalogItems(null);
+      setCatalogLoadError(null);
+      setCatalogLoading(false);
+      return;
+    }
+
+    if (!session?.id || !session.warehouse_id) {
       setCatalogLoadError(null);
       setCatalogLoading(false);
       return;

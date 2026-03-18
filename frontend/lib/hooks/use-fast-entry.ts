@@ -179,7 +179,7 @@ export function useFastEntry(params: UseFastEntryParams) {
     catalogLoadError,
     catalogSearchIndex,
     searchResults,
-  } = useCatalogFetch({ session, isClosed, inventoryView, debouncedSearchTerm, t });
+  } = useCatalogFetch({ session, isClosed, inventoryView, debouncedSearchTerm, warehouseId: selectedWarehouseId, t });
 
   // Adapt toggleFavoriteById to pass local catalogItems
   const toggleFavoriteById = useCallback(
