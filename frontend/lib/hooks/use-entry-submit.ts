@@ -16,6 +16,7 @@ import {
   type OfflineEntryQueueItem,
 } from "@/lib/offline-entry-queue";
 import { clearDraftByKey } from "@/lib/inventory-draft";
+import type { DictionaryKeys } from "@/lib/i18n";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -82,7 +83,7 @@ export function useEntrySubmit(params: {
   setToastMessage: (msg: string | null) => void;
   setInlineErrorMessage: (msg: string | null) => void;
   setInlineErrorDebug: (msg: string | null) => void;
-  t: (key: string) => string;
+  t: (key: DictionaryKeys) => string;
   /** Called after a successful online save — use to trigger glow and increment snapshot counter. */
   onSaveSuccess: () => void;
 }) {

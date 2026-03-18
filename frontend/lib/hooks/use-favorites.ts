@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ItemSearchResult } from "@/lib/api/http";
+import type { DictionaryKeys } from "@/lib/i18n";
 
 // ─── Constants ───────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ type FavoritesByWarehouse = Record<string, ItemSearchResult[]>;
 export function useFavorites(params: {
   selectedWarehouseId: number | null;
   setToastMessage: (msg: string | null) => void;
-  t: (key: string) => string;
+  t: (key: DictionaryKeys) => string;
 }) {
   const { selectedWarehouseId, setToastMessage, t } = params;
 

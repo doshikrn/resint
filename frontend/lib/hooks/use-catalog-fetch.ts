@@ -8,6 +8,7 @@ import {
   type ItemSearchResult,
 } from "@/lib/api/http";
 import { loadCatalogCache, saveCatalogCache } from "@/lib/inventory-offline-cache";
+import type { DictionaryKeys } from "@/lib/i18n";
 
 // ─── Hook ────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ export function useCatalogFetch(params: {
   inventoryView: "revision" | "management" | "reports";
   debouncedSearchTerm: string;
   warehouseId: number | null;
-  t: (key: string) => string;
+  t: (key: DictionaryKeys) => string;
 }) {
   const { session, isClosed, inventoryView, debouncedSearchTerm, warehouseId, t } = params;
 

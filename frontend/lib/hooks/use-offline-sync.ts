@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type QueryClient } from "@tanstack/react-query";
+import type { DictionaryKeys } from "@/lib/i18n";
 
 import { ApiRequestError, saveInventoryEntry } from "@/lib/api/http";
 import { probeBackendHealth } from "@/lib/api/request";
@@ -25,7 +26,7 @@ export function useOfflineSync(params: {
   activeSessionQueryKey: readonly unknown[];
   queryClient: QueryClient;
   setToastMessage: (msg: string | null) => void;
-  t: (key: string) => string;
+  t: (key: DictionaryKeys) => string;
   onSyncSuccess?: () => void;
 }) {
   const { activeSessionQueryKey, queryClient, setToastMessage, t, onSyncSuccess } = params;
