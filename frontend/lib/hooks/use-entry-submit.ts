@@ -259,7 +259,7 @@ export function useEntrySubmit(params: {
 
   const saveEntryMutation = useMutation({
     mutationFn: saveInventoryEntry,
-    onSuccess: async (_: unknown, variables: { sessionId: number }) => {
+    onSuccess: async (_data: InventoryEntry, variables: Parameters<typeof saveInventoryEntry>[0]) => {
       setInlineErrorMessage(null);
       setInlineErrorDebug(null);
       setToastMessage(t("toast.saved"));
@@ -285,7 +285,7 @@ export function useEntrySubmit(params: {
         queryClient.invalidateQueries({ queryKey: ["items-recent"] }),
       ]);
     },
-    onError: (error: unknown) => {
+    onError: (error: Error) => {
       const mapped = mapApiError(error, {
         defaultMessage: t("error.save_failed"),
       });
