@@ -981,7 +981,7 @@ export function useFastEntry(params: UseFastEntryParams) {
     const cleaned = offlineQueue.filter((i) => !confirmedKeys.has(i.idempotency_key));
 
     console.info("[fast-entry] auto-purge confirmed queue items", {
-      removed: [...confirmedKeys],
+      removed: Array.from(confirmedKeys),
       remaining: cleaned.length,
     });
     setOfflineQueue(cleaned);
