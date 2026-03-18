@@ -3,13 +3,16 @@ import { getOnlineUsers, type OnlineUser } from "@/lib/api/http";
 
 /**
  * Polls GET /users/online every 15 seconds while enabled.
- * Returns the latest list of online users.
+ * Clears the list immediately when disabled (logout / 401).
  */
 export function useOnlineUsers(enabled: boolean): OnlineUser[] {
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setOnlineUsers([]);
+      return;
+    }
 
     const poll = () => {
       getOnlineUsers()

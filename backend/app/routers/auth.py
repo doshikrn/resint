@@ -120,6 +120,11 @@ def logout(data: LogoutRequest, db: Session = Depends(get_db)):
     if token and token.revoked_at is None:
         token.revoked_at = _utc_now()
         db.add(token)
+        # Clear presence so the user drops from online list immediately
+        user = db.query(User).filter(User.id == token.user_id).first()
+        if user:
+            user.last_seen_at = None
+            db.add(user)
         db.commit()
     return {"status": "ok"}
 
