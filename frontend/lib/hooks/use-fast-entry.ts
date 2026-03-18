@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiRequestError,
   createItem,
-  fetchSessionCatalog,
   getFrequentItems,
   getRecentInventoryEntries,
   getRecentInventoryEvents,
@@ -14,7 +13,6 @@ import {
   getSessionInventoryProgress,
   patchInventoryEntry,
   saveInventoryEntry,
-  type InventoryCatalogItem,
   type InventoryEntry,
   type InventoryEntrySnapshotRow,
   type InventoryRecentEvent,
@@ -24,15 +22,11 @@ import {
 } from "@/lib/api/http";
 import { mapApiError } from "@/lib/api/error-mapper";
 import {
-  loadCatalogCache,
   loadEntriesSnapshotCache,
-  saveCatalogCache,
   saveEntriesSnapshotCache,
 } from "@/lib/inventory-offline-cache";
 import {
   addOfflineEntryQueueItem,
-  loadOfflineEntryQueue,
-  updateOfflineEntryQueue,
   type OfflineEntryQueueItem,
 } from "@/lib/offline-entry-queue";
 import { useLanguage } from "@/lib/i18n/language-provider";
@@ -43,15 +37,11 @@ import {
   loadDraftIndex,
   saveDraftIndex,
 } from "@/lib/inventory-draft";
-import type { SyncStatus } from "@/components/inventory/sync-status-indicator";
-
-// ─── Constants ───────────────────────────────────────────────────────
-
-const FAVORITES_STORAGE_KEY = "inventory-favorites-v1";
+import { useFavorites } from "@/lib/hooks/use-favorites";
+import { useOfflineSync } from "@/lib/hooks/use-offline-sync";
+import { useCatalogFetch } from "@/lib/hooks/use-catalog-fetch";
 
 // ─── Types ───────────────────────────────────────────────────────────
-
-type FavoritesByWarehouse = Record<string, ItemSearchResult[]>;
 
 type PendingQtyConfirm = {
   normalizedQty: number;
@@ -149,35 +139,17 @@ export function useFastEntry(params: UseFastEntryParams) {
   const [clearSearchAfterSave] = useState(true);
   const [pendingQtyConfirm, setPendingQtyConfirm] = useState<PendingQtyConfirm | null>(null);
 
-  // ── Favorites ──────────────────────────────────────────────────────
-  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
-  const [favoritesByWarehouse, setFavoritesByWarehouse] = useState<FavoritesByWarehouse>({});
-
-  // ── Catalog ────────────────────────────────────────────────────────
-  const [catalogItems, setCatalogItems] = useState<InventoryCatalogItem[] | null>(null);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
-  const [catalogRefreshTick, setCatalogRefreshTick] = useState(0);
-
   // ── Entries snapshot ───────────────────────────────────────────────
   const [entriesSnapshot, setEntriesSnapshot] = useState<InventoryEntrySnapshotRow[]>([]);
   const [snapshotRefetchCounter, setSnapshotRefetchCounter] = useState(0);
 
-  // ── Offline queue ──────────────────────────────────────────────────
-  const [isOnline, setIsOnline] = useState(true);
-  const [offlineQueue, setOfflineQueue] = useState<OfflineEntryQueueItem[]>([]);
-  const [isSyncing, setIsSyncing] = useState(false);
+  // ── Misc state ─────────────────────────────────────────────────────
   const [queueRepairOpen, setQueueRepairOpen] = useState(false);
-
-  // ── Recent journal ─────────────────────────────────────────────────
   const [recentFilterMine, setRecentFilterMine] = useState(true);
 
   // ── Refs ───────────────────────────────────────────────────────────
   const searchInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
-  const isSyncingQueueRef = useRef(false);
-  const longPressTimerRef = useRef<number | null>(null);
-  const longPressHandledRef = useRef(false);
   const lastOfflineEnqueueRef = useRef<{
     signature: string;
     idempotencyKey: string;
@@ -185,6 +157,54 @@ export function useFastEntry(params: UseFastEntryParams) {
   } | null>(null);
   const submitLockRef = useRef(false);
   const restoredDraftKeyRef = useRef<string | null>(null);
+
+  // ── Sub-hooks ──────────────────────────────────────────────────────
+
+  const {
+    favoriteItems,
+    favoriteIds,
+    toggleFavorite,
+    toggleFavoriteById: toggleFavoriteByIdBase,
+    clearLongPress,
+    handleChipPointerDown,
+    longPressHandledRef,
+  } = useFavorites({ selectedWarehouseId, setToastMessage, t });
+
+  const {
+    isOnline,
+    isSyncing,
+    offlineQueue,
+    setOfflineQueue,
+    syncStatus,
+    isSyncingQueueRef,
+    syncOfflineQueue,
+    handleSyncRetry,
+    handleDismissConflict,
+    handleQueueRetryOne,
+    handleQueueDeleteOne,
+    handleQueueRetryAllFailed,
+  } = useOfflineSync({
+    activeSessionQueryKey,
+    queryClient,
+    setToastMessage,
+    t,
+    onSyncSuccess: () => setSnapshotRefetchCounter((c) => c + 1),
+  });
+
+  const {
+    catalogItems,
+    setCatalogItems,
+    catalogLoading,
+    catalogLoadError,
+    catalogSearchIndex,
+    searchResults,
+  } = useCatalogFetch({ session, isClosed, inventoryView, debouncedSearchTerm, t });
+
+  // Adapt toggleFavoriteById to pass local catalogItems
+  const toggleFavoriteById = useCallback(
+    (itemId: number) => toggleFavoriteByIdBase(itemId, catalogItems),
+    [catalogItems, toggleFavoriteByIdBase],
+  );
 
   // ── Derived ────────────────────────────────────────────────────────
 
@@ -195,14 +215,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     }
     return map;
   }, [entriesSnapshot]);
-
-  const syncStatus: SyncStatus = useMemo(() => {
-    if (!isOnline) return "offline";
-    if (isSyncing) return "syncing";
-    if (offlineQueue.some((item) => item.status === "failed" || item.status === "failed_conflict"))
-      return "error";
-    return "online";
-  }, [isOnline, isSyncing, offlineQueue]);
 
   const draftKey = useMemo(() => {
     if (!currentUser?.username) return null;
@@ -391,148 +403,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     },
   });
 
-  // ── Sync offline queue ─────────────────────────────────────────────
-
-  const syncOfflineQueue = useCallback(async () => {
-    if (typeof window === "undefined" || !navigator.onLine || isSyncingQueueRef.current) return;
-
-    let snapshot: Awaited<ReturnType<typeof loadOfflineEntryQueue>>;
-    try {
-      snapshot = await loadOfflineEntryQueue();
-    } catch {
-      return;
-    }
-    if (snapshot.length === 0) {
-      setOfflineQueue([]);
-      return;
-    }
-
-    isSyncingQueueRef.current = true;
-    setIsSyncing(true);
-
-    const now = Date.now();
-    setOfflineQueue(
-      snapshot.map((item) =>
-        item.status === "failed_conflict" || (item.next_retry_at && item.next_retry_at > now)
-          ? item
-          : { ...item, status: "syncing" as const },
-      ),
-    );
-
-    const nextQueue: OfflineEntryQueueItem[] = [];
-    let sentCount = 0;
-    let conflictCount = 0;
-
-    for (const item of snapshot) {
-      if (item.status === "failed_conflict") {
-        nextQueue.push(item);
-        continue;
-      }
-      if (item.next_retry_at && item.next_retry_at > now) {
-        nextQueue.push(item);
-        continue;
-      }
-
-      try {
-        await saveInventoryEntry({
-          sessionId: item.session_id,
-          itemId: item.item_id,
-          quantity: item.qty,
-          mode: item.mode,
-          stationId: item.station_id ?? null,
-          countedOutsideZone: false,
-          idempotencyKey: item.idempotency_key,
-          timeoutMs: 8000,
-          expectedVersion: item.mode === "set" ? (item.expected_version ?? null) : null,
-        });
-        sentCount += 1;
-      } catch (error) {
-        if (error instanceof ApiRequestError && error.status === 409) {
-          if (error.body.includes("VERSION_CONFLICT")) {
-            nextQueue.push({
-              ...item,
-              status: "failed_conflict",
-              next_retry_at: null,
-              error_code: "conflict",
-            });
-            conflictCount += 1;
-            continue;
-          }
-
-          if (error.body.includes("SESSION_CLOSED")) {
-            queryClient.setQueryData(activeSessionQueryKey, null);
-            void queryClient.invalidateQueries({ queryKey: activeSessionQueryKey });
-            nextQueue.push({
-              ...item,
-              status: "failed",
-              next_retry_at: null,
-              error_code: "session_closed",
-            });
-            conflictCount += 1;
-            continue;
-          }
-          if (error.body.includes("ACCESS_DENIED") || error.body.includes("FORBIDDEN")) {
-            nextQueue.push({
-              ...item,
-              status: "failed",
-              next_retry_at: null,
-              error_code: "access_denied",
-            });
-            conflictCount += 1;
-            continue;
-          }
-          conflictCount += 1;
-          continue;
-        }
-
-        const isNetwork =
-          error instanceof ApiRequestError ? error.status === 0 : !(error instanceof ApiRequestError);
-        const errorCode: string = isNetwork
-          ? "network"
-          : error instanceof ApiRequestError && error.status === 403
-            ? "access_denied"
-            : "unknown";
-        const retryCount = item.retry_count + 1;
-        const delayMs = Math.min(120000, Math.pow(2, item.retry_count) * 2000);
-        nextQueue.push({
-          ...item,
-          retry_count: retryCount,
-          status: "failed",
-          next_retry_at: Date.now() + delayMs,
-          error_code: errorCode,
-        });
-      }
-    }
-
-    await updateOfflineEntryQueue(nextQueue);
-    setOfflineQueue(nextQueue);
-    isSyncingQueueRef.current = false;
-    setIsSyncing(false);
-
-    if (sentCount > 0) {
-      setSnapshotRefetchCounter((c) => c + 1);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["recent-entries"] }),
-        queryClient.invalidateQueries({ queryKey: ["recent-events"] }),
-        queryClient.invalidateQueries({ queryKey: ["session-entries"] }),
-        queryClient.invalidateQueries({ queryKey: ["session-audit"] }),
-        queryClient.invalidateQueries({ queryKey: ["session-audit-log"] }),
-        queryClient.invalidateQueries({ queryKey: ["session-progress"] }),
-      ]);
-      if (conflictCount === 0) {
-        setToastMessage(t("toast.synced"));
-      }
-    }
-
-    if (conflictCount > 0) {
-      setToastMessage(t("toast.conflict"));
-    }
-  }, [activeSessionQueryKey, queryClient, setToastMessage, t]);
-
-  const handleSyncRetry = useCallback(() => {
-    void syncOfflineQueue();
-  }, [syncOfflineQueue]);
-
   // ── Effects ────────────────────────────────────────────────────────
 
   // Debounce search
@@ -542,126 +412,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     }, 150);
     return () => clearTimeout(timeout);
   }, [searchTerm]);
-
-  // Load favorites from localStorage
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const raw = window.localStorage.getItem(FAVORITES_STORAGE_KEY);
-      if (!raw) {
-        setFavoritesByWarehouse({});
-        return;
-      }
-
-      const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || typeof parsed !== "object") {
-        setFavoritesByWarehouse({});
-        return;
-      }
-
-      const normalized: FavoritesByWarehouse = {};
-      for (const [warehouseKey, value] of Object.entries(parsed as Record<string, unknown>)) {
-        if (!Array.isArray(value)) continue;
-        normalized[warehouseKey] = value
-          .flatMap((candidate): ItemSearchResult[] => {
-            if (!candidate || typeof candidate !== "object") return [];
-            const typed = candidate as {
-              id?: unknown;
-              product_code?: unknown;
-              name?: unknown;
-              unit?: unknown;
-              warehouse_id?: unknown;
-              step?: unknown;
-              min_qty?: unknown;
-              max_qty?: unknown;
-              is_favorite?: unknown;
-            };
-            if (
-              typeof typed.id !== "number" ||
-              typeof typed.name !== "string" ||
-              typeof typed.unit !== "string" ||
-              typeof typed.warehouse_id !== "number"
-            )
-              return [];
-            return [
-              {
-                id: typed.id,
-                product_code: typeof typed.product_code === "string" ? typed.product_code : "",
-                name: typed.name,
-                unit: typed.unit,
-                warehouse_id: typed.warehouse_id,
-                step: typeof typed.step === "number" && typed.step > 0 ? typed.step : 1,
-                min_qty: typeof typed.min_qty === "number" ? typed.min_qty : null,
-                max_qty: typeof typed.max_qty === "number" ? typed.max_qty : null,
-                is_favorite: typeof typed.is_favorite === "boolean" ? typed.is_favorite : false,
-              },
-            ];
-          })
-          .slice(0, 30);
-      }
-
-      setFavoritesByWarehouse(normalized);
-    } catch {
-      setFavoritesByWarehouse({});
-    } finally {
-      setFavoritesLoaded(true);
-    }
-  }, []);
-
-  // Persist favorites
-  useEffect(() => {
-    if (!favoritesLoaded || typeof window === "undefined") return;
-    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favoritesByWarehouse));
-  }, [favoritesLoaded, favoritesByWarehouse]);
-
-  // Cleanup long-press timer
-  useEffect(() => {
-    return () => {
-      if (longPressTimerRef.current !== null) {
-        window.clearTimeout(longPressTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Online/offline listeners + initial queue load + sync
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    setIsOnline(navigator.onLine);
-    void (async () => {
-      try {
-        setOfflineQueue(await loadOfflineEntryQueue());
-      } catch {
-        setOfflineQueue([]);
-      }
-    })();
-
-    const onOnline = () => {
-      setIsOnline(true);
-      void syncOfflineQueue();
-    };
-    const onOffline = () => setIsOnline(false);
-
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-
-    void syncOfflineQueue();
-
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
-  }, [syncOfflineQueue]);
-
-  // Periodic sync
-  useEffect(() => {
-    if (offlineQueue.length === 0) return;
-    const interval = window.setInterval(() => {
-      void syncOfflineQueue();
-    }, 12000);
-    return () => window.clearInterval(interval);
-  }, [offlineQueue.length, syncOfflineQueue]);
 
   // Reset search state when warehouse changes
   useEffect(() => {
@@ -681,99 +431,6 @@ export function useFastEntry(params: UseFastEntryParams) {
       clearDraftByKey(draftKey);
     }
   }, [draftKey, isClosed]);
-
-  // Catalog fetch
-  useEffect(() => {
-    if (inventoryView !== "revision") {
-      setCatalogLoading(false);
-      return;
-    }
-
-    if (!session?.id || !session.warehouse_id || isClosed) {
-      setCatalogItems(null);
-      setCatalogLoadError(null);
-      setCatalogLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    const sessionId = session.id;
-    const warehouseId = session.warehouse_id;
-
-    void (async () => {
-      setCatalogLoading(true);
-      setCatalogLoadError(null);
-
-      try {
-        const cached = await loadCatalogCache(warehouseId).catch(() => null);
-        if (cancelled) return;
-
-        if (cached?.items?.length) {
-          setCatalogItems(cached.items);
-        }
-
-        let response = await fetchSessionCatalog(sessionId, {
-          etag: cached?.etag ?? null,
-          lastModified: cached?.last_modified ?? null,
-        });
-        if (cancelled) return;
-
-        // If 304 but cached items are missing, force a full re-fetch
-        if (response.status === 304 && !cached?.items?.length) {
-          response = await fetchSessionCatalog(sessionId, {});
-          if (cancelled) return;
-        }
-
-        if (response.status === 200 && response.items) {
-          setCatalogItems(response.items);
-          await saveCatalogCache({
-            warehouse_id: warehouseId,
-            etag: response.etag,
-            last_modified: response.lastModified,
-            fetched_at: Date.now(),
-            items: response.items,
-          }).catch(() => {});
-          return;
-        }
-
-        if (response.status === 304) {
-          const nextEtag = response.etag ?? cached?.etag ?? null;
-          const nextLastModified = response.lastModified ?? cached?.last_modified ?? null;
-          if (cached) {
-            await saveCatalogCache({
-              ...cached,
-              etag: nextEtag,
-              last_modified: nextLastModified,
-              fetched_at: Date.now(),
-            }).catch(() => {});
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          const message =
-            error instanceof ApiRequestError
-              ? t("error.catalog_load")
-              : t("error.catalog_offline");
-          setCatalogLoadError(message);
-        }
-      } finally {
-        if (!cancelled) {
-          setCatalogLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [inventoryView, isClosed, session?.id, session?.warehouse_id, t, catalogRefreshTick]);
-
-  // Periodic catalog re-fetch (uses ETag so 304 is returned if unchanged)
-  useEffect(() => {
-    if (inventoryView !== "revision" || !session?.id || isClosed) return;
-    const timer = setInterval(() => setCatalogRefreshTick((n) => n + 1), 30_000);
-    return () => clearInterval(timer);
-  }, [inventoryView, session?.id, isClosed]);
 
   // Entries snapshot fetch
   useEffect(() => {
@@ -889,33 +546,7 @@ export function useFastEntry(params: UseFastEntryParams) {
     return () => window.clearTimeout(timeout);
   }, [draftKey, isClosed, qty, searchTerm, selectedItem]);
 
-  // ── Catalog search index ───────────────────────────────────────────
-
-  const catalogSearchIndex = useMemo(() => {
-    const items = (catalogItems ?? []).filter((item) => item.is_active);
-    return items.map((item) => {
-      const aliases = Array.isArray(item.aliases) ? item.aliases : [];
-      const haystack = `${item.name} ${item.product_code ?? ""} ${aliases.join(" ")}`.toLowerCase();
-      return { item, haystack };
-    });
-  }, [catalogItems]);
-
-  const searchResults = useMemo(() => {
-    const raw = debouncedSearchTerm.trim().toLowerCase();
-    if (!raw) return [] as ItemSearchResult[];
-
-    const tokens = raw.split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return [] as ItemSearchResult[];
-
-    const results: ItemSearchResult[] = [];
-    for (const row of catalogSearchIndex) {
-      if (tokens.every((token) => row.haystack.includes(token))) {
-        results.push(row.item);
-        if (results.length >= 20) break;
-      }
-    }
-    return results;
-  }, [catalogSearchIndex, debouncedSearchTerm]);
+  // ── Computed from queries ──────────────────────────────────────────
 
   const frequentOrRecentSuggestions = useMemo(() => {
     const frequentSuggestions = frequentItemsQuery.data ?? [];
@@ -945,13 +576,6 @@ export function useFastEntry(params: UseFastEntryParams) {
 
   const frequentItems = (frequentItemsQuery.data ?? []).slice(0, 7);
   const recentItems = (recentItemsQuery.data ?? []).slice(0, 7);
-
-  const favoriteItems = useMemo(() => {
-    if (!selectedWarehouseId) return [];
-    return (favoritesByWarehouse[String(selectedWarehouseId)] ?? []).slice(0, 7);
-  }, [favoritesByWarehouse, selectedWarehouseId]);
-
-  const favoriteIds = useMemo(() => new Set(favoriteItems.map((item) => item.id)), [favoriteItems]);
 
   const selectedUnit = (selectedItem?.unit ?? "").toLowerCase();
   const isWeightUnit = selectedUnit === "kg" || selectedUnit === "l" || selectedUnit === "кг" || selectedUnit === "л";
@@ -1106,53 +730,6 @@ export function useFastEntry(params: UseFastEntryParams) {
   const canSave = Boolean(canSearch && selectedItem && qty.trim().length > 0 && !qtyValidation.error);
 
   // ── Handlers ───────────────────────────────────────────────────────
-
-  const toggleFavorite = useCallback(
-    (item: ItemSearchResult) => {
-      if (!selectedWarehouseId) return;
-
-      const warehouseKey = String(selectedWarehouseId);
-      const existing = favoritesByWarehouse[warehouseKey] ?? [];
-      const isAlreadyFavorite = existing.some((entry) => entry.id === item.id);
-      const nextFavorites = isAlreadyFavorite
-        ? existing.filter((entry) => entry.id !== item.id)
-        : [item, ...existing.filter((entry) => entry.id !== item.id)].slice(0, 30);
-
-      setFavoritesByWarehouse((previous) => ({
-        ...previous,
-        [warehouseKey]: nextFavorites,
-      }));
-      setToastMessage(isAlreadyFavorite ? t("toast.removed_from_favorites") : t("toast.added_to_favorites"));
-    },
-    [favoritesByWarehouse, selectedWarehouseId, setToastMessage, t],
-  );
-
-  const toggleFavoriteById = useCallback(
-    (itemId: number) => {
-      const item = (catalogItems ?? []).find((c) => c.id === itemId);
-      if (item) toggleFavorite(item);
-    },
-    [catalogItems, toggleFavorite],
-  );
-
-  const clearLongPress = useCallback(() => {
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-
-  const handleChipPointerDown = useCallback(
-    (item: ItemSearchResult) => {
-      clearLongPress();
-      longPressHandledRef.current = false;
-      longPressTimerRef.current = window.setTimeout(() => {
-        toggleFavorite(item);
-        longPressHandledRef.current = true;
-      }, 550);
-    },
-    [clearLongPress, toggleFavorite],
-  );
 
   const chooseItem = useCallback(
     (item: ItemSearchResult) => {
@@ -1625,56 +1202,6 @@ export function useFastEntry(params: UseFastEntryParams) {
 
     await submitEntryWithQuantity(qtyValidation.normalizedQty);
   }, [selectedItem, qtyValidation, submitEntryWithQuantity, setToastMessage, t]);
-
-  // ── Queue handlers ─────────────────────────────────────────────────
-
-  const handleDismissConflict = useCallback(
-    async (entryKey: string) => {
-      const idempotencyKey = entryKey.replace(/^queue-/, "");
-      const next = await updateOfflineEntryQueue(
-        offlineQueue.filter((item) => item.idempotency_key !== idempotencyKey),
-      );
-      setOfflineQueue(next);
-    },
-    [offlineQueue],
-  );
-
-  const handleQueueRetryOne = useCallback(
-    async (idempotencyKey: string) => {
-      const next = await updateOfflineEntryQueue(
-        offlineQueue.map((item) =>
-          item.idempotency_key === idempotencyKey
-            ? { ...item, status: "pending" as const, retry_count: 0, next_retry_at: null, error_code: null }
-            : item,
-        ),
-      );
-      setOfflineQueue(next);
-      void syncOfflineQueue();
-    },
-    [offlineQueue, syncOfflineQueue],
-  );
-
-  const handleQueueDeleteOne = useCallback(
-    async (idempotencyKey: string) => {
-      const next = await updateOfflineEntryQueue(
-        offlineQueue.filter((item) => item.idempotency_key !== idempotencyKey),
-      );
-      setOfflineQueue(next);
-    },
-    [offlineQueue],
-  );
-
-  const handleQueueRetryAllFailed = useCallback(async () => {
-    const next = await updateOfflineEntryQueue(
-      offlineQueue.map((item) =>
-        item.status === "failed"
-          ? { ...item, status: "pending" as const, retry_count: 0, next_retry_at: null, error_code: null }
-          : item,
-      ),
-    );
-    setOfflineQueue(next);
-    void syncOfflineQueue();
-  }, [offlineQueue, syncOfflineQueue]);
 
   // ── Search input handlers ──────────────────────────────────────────
 
