@@ -247,24 +247,16 @@ export function useOfflineSync(params: {
           qc.invalidateQueries({ queryKey: ["items-recent"] }),
         ]);
 
-        // NOW the TQ cache has server data — safe to drop "synced" items.
-        const confirmedQueue = nextQueue.filter(
-          (i) => i.status !== "synced",
-        );
-        console.info("[offline-sync] confirmed, removing synced items", {
-          removed: syncedKeys,
-          remaining: confirmedQueue.length,
-        });
+        // Synced items are NOT removed here.  The journal derives
+        // its view by deduplicating queue items against server events
+        // (matching idempotency_key ↔ request_id).  An auto-purge
+        // effect in use-fast-entry removes confirmed items from IDB/LS
+        // once the server event is observed, decoupling queue safety
+        // from invalidateQueries timing.
 
         if (conflictCount === 0) {
           setToastMessageRef.current(tRef.current("toast.synced"));
         }
-
-        // Update React state first (atomic with TQ cache in the same
-        // microtask), then persist to storage.
-        setOfflineQueue(confirmedQueue);
-        await updateOfflineEntryQueue(confirmedQueue);
-        return; // skip the final setOfflineQueue below
       }
 
       if (conflictCount > 0) {

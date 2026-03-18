@@ -20,7 +20,7 @@ import {
 } from "@/lib/api/http";
 import { mapApiError } from "@/lib/api/error-mapper";
 import { loadEntriesSnapshotCache, saveEntriesSnapshotCache } from "@/lib/inventory-offline-cache";
-import { type OfflineEntryQueueItem } from "@/lib/offline-entry-queue";
+import { type OfflineEntryQueueItem, updateOfflineEntryQueue } from "@/lib/offline-entry-queue";
 import { useLanguage } from "@/lib/i18n/language-provider";
 import { useSuccessGlow } from "@/lib/hooks/use-success-glow";
 import { useFavorites } from "@/lib/hooks/use-favorites";
@@ -885,25 +885,33 @@ export function useFastEntry(params: UseFastEntryParams) {
   );
 
   const recentJournalEntries = useMemo(() => {
-    const pending = pendingRecent.map<RecentJournalEntry>((entry) => ({
-      key: `queue-${entry.idempotency_key}`,
-      itemId: entry.item_id,
-      // Map "synced" (POST succeeded, awaiting TQ confirmation) to
-      // "syncing" for display — the entry is transitioning to saved.
-      status: entry.status === "synced" ? "syncing" : entry.status,
-      itemName: entry.item_name,
-      quantity: entry.qty,
-      unit: entry.unit,
-      mode: entry.mode,
-      timestamp: entry.created_at,
-      countedOutsideZone: entry.counted_outside_zone,
-      countedByZone: null,
-      stationId: entry.station_id ?? null,
-      stationName: null,
-      stationDepartment: null,
-      isOwnEntry: true,
-      queueItem: entry,
-    }));
+    // Build a set of server-confirmed request IDs so we can dedup
+    // queue items whose server event has already arrived.
+    const serverRequestIds = new Set<string>();
+    for (const event of recentEvents) {
+      if (event.request_id) serverRequestIds.add(event.request_id);
+    }
+
+    // Only show queue items the server hasn't confirmed yet.
+    const pending = pendingRecent
+      .filter((entry) => !serverRequestIds.has(entry.idempotency_key))
+      .map<RecentJournalEntry>((entry) => ({
+        key: `queue-${entry.idempotency_key}`,
+        itemId: entry.item_id,
+        status: entry.status === "synced" ? "syncing" : entry.status,
+        itemName: entry.item_name,
+        quantity: entry.qty,
+        unit: entry.unit,
+        mode: entry.mode,
+        timestamp: entry.created_at,
+        countedOutsideZone: entry.counted_outside_zone,
+        countedByZone: null,
+        stationId: entry.station_id ?? null,
+        stationName: null,
+        stationDepartment: null,
+        isOwnEntry: true,
+        queueItem: entry,
+      }));
 
     const saved = recentEvents.map<RecentJournalEntry>((event) => {
       const entry = entriesByItemId.get(event.item_id);
@@ -953,6 +961,36 @@ export function useFastEntry(params: UseFastEntryParams) {
     }
     return groups;
   }, [formatRelativeGroupLabel, filteredRecentJournalEntries]);
+
+  // ── Auto-purge confirmed queue items ───────────────────────────────
+  // When server events arrive with a request_id matching a queue item's
+  // idempotency_key, that item is confirmed server-side.  Remove it
+  // from IDB/LS so the queue stays clean.  The journal dedup above
+  // already hides these items visually, so this is purely a storage
+  // cleanup — no entry ever disappears from the journal.
+  useEffect(() => {
+    if (recentEvents.length === 0 || offlineQueue.length === 0) return;
+
+    const serverRequestIds = new Set<string>();
+    for (const event of recentEvents) {
+      if (event.request_id) serverRequestIds.add(event.request_id);
+    }
+
+    const confirmed = offlineQueue.filter(
+      (item) => item.status === "synced" && serverRequestIds.has(item.idempotency_key),
+    );
+    if (confirmed.length === 0) return;
+
+    const confirmedKeys = new Set(confirmed.map((i) => i.idempotency_key));
+    const cleaned = offlineQueue.filter((i) => !confirmedKeys.has(i.idempotency_key));
+
+    console.info("[fast-entry] auto-purge confirmed queue items", {
+      removed: [...confirmedKeys],
+      remaining: cleaned.length,
+    });
+    setOfflineQueue(cleaned);
+    void updateOfflineEntryQueue(cleaned);
+  }, [recentEvents, offlineQueue, setOfflineQueue]);
 
   // ── Return ─────────────────────────────────────────────────────────
 
