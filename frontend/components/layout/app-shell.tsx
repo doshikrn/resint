@@ -34,7 +34,7 @@ const APP_ENV = process.env.NEXT_PUBLIC_APP_ENV ?? "production";
 const ENV_BADGE_LABEL: Record<string, string> = { development: "DEV", staging: "STAGING" };
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
 
-const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Resint";
+const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "ZERE Restaurant";
 const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/brand/logo.png";
 
 const ROLE_LABEL_FALLBACK: Record<string, string> = {
@@ -201,13 +201,15 @@ function BrandIdentity() {
       {logoLoadFailed ? (
         <Package className="h-10 w-10 shrink-0" />
       ) : (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
-          src={BRAND_LOGO_SRC}
-          alt={BRAND_NAME}
-          className="h-12 w-auto shrink-0 object-contain"
-          onError={() => setLogoLoadFailed(true)}
-        />
+        <div className="h-14 w-[128px] shrink-0 overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={BRAND_LOGO_SRC}
+            alt={BRAND_NAME}
+            className="h-full w-full scale-[2.4] object-contain object-center"
+            onError={() => setLogoLoadFailed(true)}
+          />
+        </div>
       )}
     </div>
   );
@@ -219,20 +221,22 @@ function HeaderWordmark() {
   return (
     <div className="flex select-none items-center gap-4 leading-none">
       {!logoLoadFailed ? (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
-          src={BRAND_LOGO_SRC}
-          alt={BRAND_NAME}
-          className="h-10 w-auto object-contain"
-          onError={() => setLogoLoadFailed(true)}
-        />
+        <div className="h-12 w-[120px] overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={BRAND_LOGO_SRC}
+            alt={BRAND_NAME}
+            className="h-full w-full scale-[2.3] object-contain object-center"
+            onError={() => setLogoLoadFailed(true)}
+          />
+        </div>
       ) : null}
       <div className="flex flex-col items-start">
         <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground/70">
-          Resint
+          ZERE
         </p>
         <p className="-mt-0.5 text-[10px] font-normal tracking-wide text-muted-foreground">
-          restaurant system
+          Restaurant
         </p>
       </div>
     </div>

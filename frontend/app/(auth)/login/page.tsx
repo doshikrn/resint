@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Resint";
+const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "ZERE Restaurant";
 const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/brand/logo.png";
 
 export default function LoginPage() {
@@ -74,15 +74,17 @@ export default function LoginPage() {
     <div className="mx-auto flex min-h-[calc(100dvh-7rem)] w-full max-w-md items-center px-1">
       <div className="w-full rounded-3xl border border-border/70 bg-card/95 p-5 shadow-md md:p-7">
         <div className="mb-5 flex justify-center">
-          <div className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-background/70 px-4 py-2.5 shadow-sm backdrop-blur-sm">
+          <div className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-background/70 px-5 py-3 shadow-sm backdrop-blur-sm">
             {!logoLoadFailed ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={BRAND_LOGO_SRC}
-                alt={BRAND_NAME}
-                className="h-11 w-auto shrink-0 object-contain"
-                onError={() => setLogoLoadFailed(true)}
-              />
+              <div className="h-16 w-[144px] overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={BRAND_LOGO_SRC}
+                  alt={BRAND_NAME}
+                  className="h-full w-full scale-[2.4] object-contain object-center"
+                  onError={() => setLogoLoadFailed(true)}
+                />
+              </div>
             ) : (
               <span className="text-sm font-semibold text-foreground">{BRAND_NAME}</span>
             )}
@@ -92,10 +94,10 @@ export default function LoginPage() {
         <div className="mb-5 flex justify-center">
           <div className="flex flex-col items-center">
             <p className="text-[13px] font-bold uppercase tracking-[0.2em] text-foreground/50">
-              RESINT
+              ZERE
             </p>
             <p className="-mt-0.5 text-[10px] font-normal tracking-wide text-muted-foreground/70">
-              restaurant system
+              Restaurant
             </p>
           </div>
         </div>
