@@ -422,10 +422,8 @@ export function useEntrySubmit(params: {
             mode,
             stationId,
           });
-          const mapped = mapApiError(new ApiRequestError(0, "Network error"));
-          setToastMessage(mapped.message);
-          setInlineErrorMessage(mapped.inlineMessage);
-          setInlineErrorDebug(mapped.debug ?? null);
+          // enqueueEntry already sets toast ("queued") and resets input state.
+          // Don't overwrite with a generic network-error message.
           return;
         }
 

@@ -169,7 +169,10 @@ export default function InventoryPage() {
   }, [selectedWarehouseId]);
 
   // ── Active session query ───────────────────────────────────────────
-  const activeSessionQueryKey = ["active-session", selectedWarehouseId] as const;
+  const activeSessionQueryKey = useMemo(
+    () => ["active-session", selectedWarehouseId] as const,
+    [selectedWarehouseId],
+  );
 
   const activeSessionQuery = useQuery({
     queryKey: activeSessionQueryKey,

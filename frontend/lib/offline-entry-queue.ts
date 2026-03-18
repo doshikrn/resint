@@ -131,7 +131,22 @@ export async function loadOfflineEntryQueue(): Promise<OfflineEntryQueueItem[]> 
 
   try {
     const rows = await loadFromIndexedDb();
-    saveToLocalStorage(rows);
+    // Only sync when IDB returned real data.  If IDB returned empty
+    // (e.g. openOfflineDatabase failed internally and loadFromIndexedDb
+    // resolved with []), we must NOT overwrite localStorage — it may be
+    // the only surviving copy of the queue.
+    if (rows.length > 0) {
+      saveToLocalStorage(rows);
+    }
+    // If IDB is empty but localStorage has items, prefer the LS copy.
+    // This covers the edge case where IDB is "supported" but the
+    // database couldn't actually be opened.
+    if (rows.length === 0) {
+      const lsFallback = loadFromLocalStorage();
+      if (lsFallback.length > 0) {
+        return lsFallback;
+      }
+    }
     return rows;
   } catch {
     return loadFromLocalStorage();

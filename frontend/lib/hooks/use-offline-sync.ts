@@ -35,10 +35,25 @@ export function useOfflineSync(params: {
 
   const isSyncingQueueRef = useRef(false);
 
-  // Keep a stable ref to onSyncSuccess so syncOfflineQueue doesn't need to
-  // re-create every time the parent re-renders with a new inline arrow function.
+  // ── Stable refs for props that may change reference between renders ──
+  // Without refs, syncOfflineQueue is recreated on every render when callers
+  // pass a new array literal or inline function, which causes the main
+  // useEffect to re-run, re-attach listeners (missing events in the gap),
+  // and restart the periodic sync timer (so it never fires).
   const onSyncSuccessRef = useRef(onSyncSuccess);
   onSyncSuccessRef.current = onSyncSuccess;
+
+  const activeSessionQueryKeyRef = useRef(activeSessionQueryKey);
+  activeSessionQueryKeyRef.current = activeSessionQueryKey;
+
+  const queryClientRef = useRef(queryClient);
+  queryClientRef.current = queryClient;
+
+  const setToastMessageRef = useRef(setToastMessage);
+  setToastMessageRef.current = setToastMessage;
+
+  const tRef = useRef(t);
+  tRef.current = t;
 
   // ── Sync callback ──────────────────────────────────────────────────
 
@@ -110,8 +125,8 @@ export function useOfflineSync(params: {
             }
 
             if (error.body.includes("SESSION_CLOSED")) {
-              queryClient.setQueryData(activeSessionQueryKey, null);
-              void queryClient.invalidateQueries({ queryKey: activeSessionQueryKey });
+              queryClientRef.current.setQueryData(activeSessionQueryKeyRef.current, null);
+              void queryClientRef.current.invalidateQueries({ queryKey: activeSessionQueryKeyRef.current });
               nextQueue.push({
                 ...item,
                 status: "failed",
@@ -167,29 +182,33 @@ export function useOfflineSync(params: {
 
       if (sentCount > 0) {
         onSyncSuccessRef.current?.();
+        const qc = queryClientRef.current;
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["recent-entries"] }),
-          queryClient.invalidateQueries({ queryKey: ["recent-events"] }),
-          queryClient.invalidateQueries({ queryKey: ["session-entries"] }),
-          queryClient.invalidateQueries({ queryKey: ["session-audit"] }),
-          queryClient.invalidateQueries({ queryKey: ["session-audit-log"] }),
-          queryClient.invalidateQueries({ queryKey: ["session-progress"] }),
-          queryClient.invalidateQueries({ queryKey: ["items-frequent"] }),
-          queryClient.invalidateQueries({ queryKey: ["items-recent"] }),
+          qc.invalidateQueries({ queryKey: ["recent-entries"] }),
+          qc.invalidateQueries({ queryKey: ["recent-events"] }),
+          qc.invalidateQueries({ queryKey: ["session-entries"] }),
+          qc.invalidateQueries({ queryKey: ["session-audit"] }),
+          qc.invalidateQueries({ queryKey: ["session-audit-log"] }),
+          qc.invalidateQueries({ queryKey: ["session-progress"] }),
+          qc.invalidateQueries({ queryKey: ["items-frequent"] }),
+          qc.invalidateQueries({ queryKey: ["items-recent"] }),
         ]);
         if (conflictCount === 0) {
-          setToastMessage(t("toast.synced"));
+          setToastMessageRef.current(tRef.current("toast.synced"));
         }
       }
 
       if (conflictCount > 0) {
-        setToastMessage(t("toast.conflict"));
+        setToastMessageRef.current(tRef.current("toast.conflict"));
       }
     } finally {
       isSyncingQueueRef.current = false;
       setIsSyncing(false);
     }
-  }, [activeSessionQueryKey, queryClient, setToastMessage, t]);
+  // All changing deps are read via refs — empty deps keeps the function
+  // identity stable so the useEffect below runs exactly once on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSyncRetry = useCallback(() => {
     void syncOfflineQueue();
@@ -197,17 +216,24 @@ export function useOfflineSync(params: {
 
   // ── Effects ────────────────────────────────────────────────────────
 
-  // Online/offline listeners + initial queue load + immediate sync
+  // Online/offline listeners + initial queue load + immediate sync.
+  // syncOfflineQueue is now identity-stable (empty deps) so this effect
+  // runs exactly once on mount — no listener gaps, no load/sync races.
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     setIsOnline(navigator.onLine);
+
+    // Load the persisted queue first, THEN attempt a sync.
+    // Sequential execution prevents the old race where a parallel sync
+    // could clear IDB while the load was still reading from it.
     void (async () => {
       try {
         setOfflineQueue(await loadOfflineEntryQueue());
       } catch {
         setOfflineQueue([]);
       }
+      void syncOfflineQueue();
     })();
 
     const onOnline = () => {
@@ -219,13 +245,13 @@ export function useOfflineSync(params: {
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
 
-    void syncOfflineQueue();
-
     return () => {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [syncOfflineQueue]);
+    // syncOfflineQueue is identity-stable (empty useCallback deps + refs).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Periodic sync while queue is non-empty
   useEffect(() => {
@@ -234,7 +260,8 @@ export function useOfflineSync(params: {
       void syncOfflineQueue();
     }, 12000);
     return () => window.clearInterval(interval);
-  }, [offlineQueue.length, syncOfflineQueue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offlineQueue.length]);
 
   // ── Derived ────────────────────────────────────────────────────────
 
