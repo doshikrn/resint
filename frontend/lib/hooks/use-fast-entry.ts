@@ -12,34 +12,22 @@ import {
   getSessionInventoryAudit,
   getSessionInventoryProgress,
   patchInventoryEntry,
-  saveInventoryEntry,
   type InventoryEntry,
   type InventoryEntrySnapshotRow,
-  type InventoryRecentEvent,
   type InventorySession,
   type InventorySessionProgress,
   type ItemSearchResult,
 } from "@/lib/api/http";
 import { mapApiError } from "@/lib/api/error-mapper";
-import {
-  loadEntriesSnapshotCache,
-  saveEntriesSnapshotCache,
-} from "@/lib/inventory-offline-cache";
-import {
-  addOfflineEntryQueueItem,
-  type OfflineEntryQueueItem,
-} from "@/lib/offline-entry-queue";
+import { loadEntriesSnapshotCache, saveEntriesSnapshotCache } from "@/lib/inventory-offline-cache";
+import { type OfflineEntryQueueItem } from "@/lib/offline-entry-queue";
 import { useLanguage } from "@/lib/i18n/language-provider";
 import { useSuccessGlow } from "@/lib/hooks/use-success-glow";
-import {
-  clearDraftByKey,
-  isValidDraftSelectedItem,
-  loadDraftIndex,
-  saveDraftIndex,
-} from "@/lib/inventory-draft";
 import { useFavorites } from "@/lib/hooks/use-favorites";
 import { useOfflineSync } from "@/lib/hooks/use-offline-sync";
 import { useCatalogFetch } from "@/lib/hooks/use-catalog-fetch";
+import { useDraft } from "@/lib/hooks/use-draft";
+import { useEntrySubmit } from "@/lib/hooks/use-entry-submit";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -150,13 +138,6 @@ export function useFastEntry(params: UseFastEntryParams) {
   // ── Refs ───────────────────────────────────────────────────────────
   const searchInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
-  const lastOfflineEnqueueRef = useRef<{
-    signature: string;
-    idempotencyKey: string;
-    createdAtMs: number;
-  } | null>(null);
-  const submitLockRef = useRef(false);
-  const restoredDraftKeyRef = useRef<string | null>(null);
 
   // ── Sub-hooks ──────────────────────────────────────────────────────
 
@@ -216,12 +197,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     return map;
   }, [entriesSnapshot]);
 
-  const draftKey = useMemo(() => {
-    if (!currentUser?.username) return null;
-    if (!selectedWarehouseId) return null;
-    return `${currentUser.username}:${selectedWarehouseId}`;
-  }, [currentUser?.username, selectedWarehouseId]);
-
   // ── Helpers ────────────────────────────────────────────────────────
 
   const shouldAutoFocus = useCallback(() => {
@@ -255,6 +230,26 @@ export function useFastEntry(params: UseFastEntryParams) {
     },
     [shouldAutoFocus],
   );
+
+  // ── Draft management ───────────────────────────────────────────────
+
+  const { draftKey } = useDraft({
+    currentUsername: currentUser?.username,
+    selectedWarehouseId,
+    isClosed,
+    searchTerm,
+    qty,
+    selectedItem,
+    setSearchTerm,
+    setQty,
+    setSelectedItem,
+    setDebouncedSearchTerm,
+    setIsDropdownOpen,
+    setHighlightedIndex,
+    focusInputReliably,
+    qtyInputRef,
+    searchInputRef,
+  });
 
   // ── Queries ────────────────────────────────────────────────────────
 
@@ -331,45 +326,6 @@ export function useFastEntry(params: UseFastEntryParams) {
 
   // ── Mutations ──────────────────────────────────────────────────────
 
-  const saveEntryMutation = useMutation({
-    mutationFn: saveInventoryEntry,
-    onSuccess: async (_, variables) => {
-      setInlineErrorMessage(null);
-      setInlineErrorDebug(null);
-      setToastMessage(t("toast.saved"));
-      triggerSaveGlow();
-      setQty("");
-      if (clearSearchAfterSave) {
-        setSearchTerm("");
-        setDebouncedSearchTerm("");
-      }
-      setSelectedItem(null);
-      setIsDropdownOpen(!clearSearchAfterSave);
-      setHighlightedIndex(-1);
-      focusInputReliably(searchInputRef);
-      clearDraftByKey(draftKey);
-      setSnapshotRefetchCounter((c) => c + 1);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["recent-entries", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["recent-events", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["session-entries", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["session-audit", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["session-audit-log", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["session-progress", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["items-frequent"] }),
-        queryClient.invalidateQueries({ queryKey: ["items-recent"] }),
-      ]);
-    },
-    onError: (error) => {
-      const mapped = mapApiError(error, {
-        defaultMessage: t("error.save_failed"),
-      });
-      setToastMessage(mapped.message);
-      setInlineErrorMessage(mapped.inlineMessage);
-      setInlineErrorDebug(mapped.debug ?? null);
-    },
-  });
-
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const undoMutation = useMutation({
     mutationFn: patchInventoryEntry,
@@ -425,13 +381,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     }
   }, [selectedWarehouseId]);
 
-  // Clear draft on session close
-  useEffect(() => {
-    if (isClosed) {
-      clearDraftByKey(draftKey);
-    }
-  }, [draftKey, isClosed]);
-
   // Entries snapshot fetch
   useEffect(() => {
     if (!session?.id || isClosed) {
@@ -468,83 +417,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isClosed, session?.id, snapshotRefetchCounter]);
-
-  // Draft restore
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!draftKey) return;
-    if (restoredDraftKeyRef.current === draftKey) return;
-
-    restoredDraftKeyRef.current = draftKey;
-    const index = loadDraftIndex();
-    const draft = index[draftKey];
-    if (!draft) return;
-
-    if (searchTerm.trim() || qty.trim() || selectedItem) return;
-
-    const updatedAt = typeof draft.updatedAt === "number" ? draft.updatedAt : 0;
-    const maxAgeMs = 7 * 24 * 60 * 60 * 1000;
-    if (updatedAt > 0 && Date.now() - updatedAt > maxAgeMs) {
-      clearDraftByKey(draftKey);
-      return;
-    }
-
-    const nextSearchTerm = typeof draft.searchTerm === "string" ? draft.searchTerm : "";
-    const nextQty = typeof draft.qty === "string" ? draft.qty : "";
-    const nextSelectedItem = isValidDraftSelectedItem(draft.selectedItem) ? draft.selectedItem : null;
-
-    if (nextSelectedItem && selectedWarehouseId && nextSelectedItem.warehouse_id !== selectedWarehouseId) {
-      clearDraftByKey(draftKey);
-      return;
-    }
-
-    setSearchTerm(nextSearchTerm);
-    setQty(nextQty);
-    if (nextSelectedItem) {
-      setSelectedItem(nextSelectedItem);
-      setDebouncedSearchTerm(nextSelectedItem.name);
-      setIsDropdownOpen(false);
-      setHighlightedIndex(-1);
-      setTimeout(() => {
-        focusInputReliably(qtyInputRef);
-      }, 0);
-    } else {
-      setDebouncedSearchTerm(nextSearchTerm);
-      setTimeout(() => {
-        focusInputReliably(searchInputRef);
-      }, 0);
-    }
-  }, [draftKey, focusInputReliably, qty, searchTerm, selectedItem, selectedWarehouseId]);
-
-  // Draft persist
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!draftKey) return;
-    if (isClosed) return;
-
-    const timeout = window.setTimeout(() => {
-      const isEmpty = !searchTerm.trim() && !qty.trim() && !selectedItem;
-      const index = loadDraftIndex();
-
-      if (isEmpty) {
-        if (draftKey in index) {
-          delete index[draftKey];
-          saveDraftIndex(index);
-        }
-        return;
-      }
-
-      index[draftKey] = {
-        searchTerm,
-        qty,
-        selectedItem,
-        updatedAt: Date.now(),
-      };
-      saveDraftIndex(index);
-    }, 250);
-
-    return () => window.clearTimeout(timeout);
-  }, [draftKey, isClosed, qty, searchTerm, selectedItem]);
 
   // ── Computed from queries ──────────────────────────────────────────
 
@@ -822,133 +694,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     ]);
   }, [selectedWarehouseId, canSearch, session?.id, session?.is_closed, currentUser?.username, queryClient]);
 
-  const upsertEntriesSnapshotOptimistic = useCallback(
-    (snapshotParams: {
-      sessionId: number;
-      itemId: number;
-      qty: number;
-      unit: string;
-      updatedAt?: string;
-    }) => {
-      if (!currentUser) return;
-
-      const updatedAt = snapshotParams.updatedAt ?? new Date().toISOString();
-      const nextRow: InventoryEntrySnapshotRow = {
-        item_id: snapshotParams.itemId,
-        qty: snapshotParams.qty,
-        unit: snapshotParams.unit,
-        updated_at: updatedAt,
-        updated_by_user: {
-          id: -1,
-          username: currentUser.username,
-          display_name: currentUser.full_name ?? currentUser.username,
-        },
-      };
-
-      setEntriesSnapshot((previous) => {
-        const idx = previous.findIndex((row) => row.item_id === snapshotParams.itemId);
-        const next =
-          idx >= 0
-            ? previous.map((row, i) => (i === idx ? nextRow : row))
-            : [nextRow, ...previous];
-
-        void saveEntriesSnapshotCache({
-          session_id: snapshotParams.sessionId,
-          fetched_at: Date.now(),
-          entries: next,
-        }).catch(() => {});
-
-        return next;
-      });
-    },
-    [currentUser],
-  );
-
-  const applyOptimisticRecentEvent = useCallback(
-    (eventParams: {
-      sessionId: number;
-      itemId: number;
-      itemName: string;
-      unit: string;
-      quantity: number;
-      mode: "add" | "set";
-    }) => {
-      const actorUsername = currentUser?.username ?? "unknown";
-      const actorDisplayName = currentUser?.full_name ?? actorUsername;
-      const nowIso = new Date().toISOString();
-      const optimisticId = -Date.now();
-      queryClient.setQueryData<InventoryEntry[]>(
-        ["recent-entries", eventParams.sessionId],
-        (previous) => {
-          const rows = previous ?? [];
-          const idx = rows.findIndex((row) => row.item_id === eventParams.itemId);
-          const current = idx >= 0 ? rows[idx] : null;
-          const nextQuantity =
-            eventParams.mode === "add" ? (current?.quantity ?? 0) + eventParams.quantity : eventParams.quantity;
-          const nextRow: InventoryEntry = {
-            id: current?.id ?? optimisticId,
-            session_id: eventParams.sessionId,
-            item_id: eventParams.itemId,
-            item_name: eventParams.itemName,
-            unit: eventParams.unit,
-            quantity: nextQuantity,
-            version: current?.version ?? 1,
-            updated_at: nowIso,
-            station_id: null,
-            station_name: null,
-            station_department: null,
-            counted_outside_zone: false,
-            counted_by_zone_id: null,
-            counted_by_zone: null,
-            outside_zone_note: null,
-          };
-          if (idx >= 0) {
-            return rows.map((row, i) => (i === idx ? nextRow : row));
-          }
-          return [nextRow, ...rows].slice(0, 20);
-        },
-      );
-
-      queryClient.setQueryData(
-        ["recent-events", eventParams.sessionId],
-        (previous: InventoryRecentEvent[] | undefined) => {
-          const rows = previous ?? [];
-          const beforeQuantity = entriesSnapshotByItemId.get(eventParams.itemId)?.qty ?? 0;
-          const afterQuantity =
-            eventParams.mode === "add" ? beforeQuantity + eventParams.quantity : eventParams.quantity;
-          const optimisticEvent: InventoryRecentEvent = {
-            id: optimisticId,
-            session_id: eventParams.sessionId,
-            item_id: eventParams.itemId,
-            item_name: eventParams.itemName,
-            unit: eventParams.unit,
-            mode: eventParams.mode,
-            qty_input: eventParams.quantity,
-            qty_delta: afterQuantity - beforeQuantity,
-            actor_user_id: -1,
-            actor_username: actorUsername,
-            actor_display_name: actorDisplayName,
-            station_id: null,
-            station_name: null,
-            station_department: null,
-            counted_outside_zone: false,
-            counted_by_zone_id: null,
-            counted_by_zone: null,
-            outside_zone_note: null,
-            request_id: null,
-            before_quantity: beforeQuantity,
-            after_quantity: afterQuantity,
-            created_at: nowIso,
-          };
-          return [optimisticEvent, ...rows].slice(0, 25);
-        },
-      );
-    },
-    [currentUser?.full_name, currentUser?.username, entriesSnapshotByItemId, queryClient],
-  );
-
-  // ── enqueueEntry ───────────────────────────────────────────────────
-
   const entriesByItemId = useMemo(() => {
     const map = new Map<number, InventoryEntry>();
     for (const entry of recentEntriesQuery.data ?? []) {
@@ -957,251 +702,40 @@ export function useFastEntry(params: UseFastEntryParams) {
     return map;
   }, [recentEntriesQuery.data]);
 
-  const enqueueEntry = useCallback(async (enqueueParams: {
-    idempotencyKey: string;
-    sessionId: number;
-    warehouseId: number;
-    itemId: number;
-    itemName: string;
-    unit: string;
-    quantity: number;
-    mode: "set" | "add";
-    stationId: number | null;
-  }) => {
-    if (isClosed) return;
-    const next = await addOfflineEntryQueueItem({
-      idempotency_key: enqueueParams.idempotencyKey,
-      session_id: enqueueParams.sessionId,
-      warehouse_id: enqueueParams.warehouseId,
-      item_id: enqueueParams.itemId,
-      item_name: enqueueParams.itemName,
-      unit: enqueueParams.unit,
-      qty: enqueueParams.quantity,
-      mode: enqueueParams.mode,
-      station_id: enqueueParams.stationId,
-      counted_outside_zone: false,
-      created_at: new Date().toISOString(),
-      retry_count: 0,
-      status: "pending",
-      next_retry_at: null,
-      expected_version:
-        enqueueParams.mode === "set"
-          ? (entriesByItemId.get(enqueueParams.itemId)?.version ?? null)
-          : null,
-    });
+  // ── Submission pipeline ────────────────────────────────────────────
 
-    const currentQty = entriesSnapshotByItemId.get(enqueueParams.itemId)?.qty ?? 0;
-    const nextQty = enqueueParams.mode === "add" ? currentQty + enqueueParams.quantity : enqueueParams.quantity;
-    upsertEntriesSnapshotOptimistic({
-      sessionId: enqueueParams.sessionId,
-      itemId: enqueueParams.itemId,
-      qty: nextQty,
-      unit: enqueueParams.unit,
-    });
-
-    setOfflineQueue(next);
-    clearDraftByKey(draftKey);
-    setToastMessage(t("toast.queued"));
-    setQty("");
-    if (clearSearchAfterSave) {
-      setSearchTerm("");
-      setDebouncedSearchTerm("");
-    }
-    setSelectedItem(null);
-    setIsDropdownOpen(!clearSearchAfterSave);
-    setHighlightedIndex(-1);
-    focusInputReliably(searchInputRef);
-  }, [isClosed, entriesByItemId, entriesSnapshotByItemId, upsertEntriesSnapshotOptimistic, draftKey, clearSearchAfterSave, focusInputReliably, setToastMessage, t]);
-
-  // ── Submit entry (main save handler) ───────────────────────────────
-
-  const submitEntryWithQuantity = useCallback(async (parsedQty: number) => {
-    if (!session || !selectedItem || isClosed || saveEntryMutation.isPending) return;
-    if (submitLockRef.current) return;
-
-    submitLockRef.current = true;
-    try {
-      const mode: "set" | "add" = "add";
-      const stationId: number | null = null;
-
-      const signature = `${session.id}:${session.warehouse_id}:${selectedItem.id}:${selectedItem.unit}:${mode}:${stationId ?? "null"}:${parsedQty}`;
-      const nowMs = Date.now();
-      const generateIdempotencyKey = () =>
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-      let idempotencyKey = generateIdempotencyKey();
-      if (!navigator.onLine) {
-        const previous = lastOfflineEnqueueRef.current;
-        if (previous && previous.signature === signature && nowMs - previous.createdAtMs < 1500) {
-          idempotencyKey = previous.idempotencyKey;
-        } else {
-          lastOfflineEnqueueRef.current = {
-            signature,
-            idempotencyKey,
-            createdAtMs: nowMs,
-          };
-        }
-      }
-
-      if (!navigator.onLine) {
-        await enqueueEntry({
-          idempotencyKey,
-          sessionId: session.id,
-          warehouseId: session.warehouse_id,
-          itemId: selectedItem.id,
-          itemName: selectedItem.name,
-          unit: selectedItem.unit,
-          quantity: parsedQty,
-          mode,
-          stationId,
-        });
-        const mapped = mapApiError(new ApiRequestError(0, "Network error"));
-        setToastMessage(mapped.message);
-        setInlineErrorMessage(mapped.inlineMessage);
-        setInlineErrorDebug(mapped.debug ?? null);
-        return;
-      }
-
-      const previousSnapshot = entriesSnapshotByItemId.get(selectedItem.id) ?? null;
-      try {
-        const currentQty = entriesSnapshotByItemId.get(selectedItem.id)?.qty ?? 0;
-        const nextQty = mode === "add" ? currentQty + parsedQty : parsedQty;
-        upsertEntriesSnapshotOptimistic({
-          sessionId: session.id,
-          itemId: selectedItem.id,
-          qty: nextQty,
-          unit: selectedItem.unit,
-        });
-        applyOptimisticRecentEvent({
-          sessionId: session.id,
-          itemId: selectedItem.id,
-          itemName: selectedItem.name,
-          unit: selectedItem.unit,
-          quantity: parsedQty,
-          mode,
-        });
-        setQty("");
-        if (clearSearchAfterSave) {
-          setSearchTerm("");
-          setDebouncedSearchTerm("");
-        }
-        setSelectedItem(null);
-        setIsDropdownOpen(!clearSearchAfterSave);
-        setHighlightedIndex(-1);
-        focusInputReliably(searchInputRef);
-        clearDraftByKey(draftKey);
-
-        await saveEntryMutation.mutateAsync({
-          sessionId: session.id,
-          itemId: selectedItem.id,
-          quantity: parsedQty,
-          mode,
-          stationId,
-          countedOutsideZone: false,
-          idempotencyKey,
-          timeoutMs: 8000,
-        });
-      } catch (error) {
-        if (error instanceof ApiRequestError && error.status === 409) {
-          setEntriesSnapshot((prev) => {
-            if (!previousSnapshot) {
-              return prev.filter((row) => row.item_id !== selectedItem.id);
-            }
-            const idx = prev.findIndex((row) => row.item_id === selectedItem.id);
-            if (idx >= 0) {
-              return prev.map((row, i) => (i === idx ? previousSnapshot : row));
-            }
-            return [previousSnapshot, ...prev];
-          });
-
-          const isSessionClosed = error.body.includes("SESSION_CLOSED");
-          if (isSessionClosed) {
-            queryClient.setQueryData(activeSessionQueryKey, null);
-            void queryClient.invalidateQueries({ queryKey: activeSessionQueryKey });
-            setToastMessage(t("error.session_closed_save"));
-            setInlineErrorMessage(t("error.session_closed_save"));
-            setInlineErrorDebug(null);
-            return;
-          }
-
-          const mapped = mapApiError(error, {
-            defaultMessage: "Конфликт: кто-то уже изменил",
-          });
-          setToastMessage(mapped.message);
-          setInlineErrorMessage(mapped.inlineMessage);
-          setInlineErrorDebug(mapped.debug ?? null);
-          return;
-        }
-
-        const shouldQueue =
-          !(error instanceof ApiRequestError) ||
-          error.status === 0 ||
-          error.status === 502 ||
-          error.status === 503 ||
-          error.status === 504;
-
-        if (!shouldQueue) {
-          const mapped = mapApiError(error, {
-            defaultMessage: t("error.save_failed"),
-          });
-          setToastMessage(mapped.message);
-          setInlineErrorMessage(mapped.inlineMessage);
-          setInlineErrorDebug(mapped.debug ?? null);
-          return;
-        }
-
-        await enqueueEntry({
-          idempotencyKey,
-          sessionId: session.id,
-          warehouseId: session.warehouse_id,
-          itemId: selectedItem.id,
-          itemName: selectedItem.name,
-          unit: selectedItem.unit,
-          quantity: parsedQty,
-          mode,
-          stationId,
-        });
-        const mapped = mapApiError(error, {
-          defaultMessage: "Нет сети — сохранили в очередь",
-          queuedOfflineMessage: "Нет сети — сохранили в очередь",
-        });
-        setToastMessage(mapped.message);
-        setInlineErrorMessage(mapped.inlineMessage);
-        setInlineErrorDebug(mapped.debug ?? null);
-        saveEntryMutation.reset();
-      }
-    } finally {
-      submitLockRef.current = false;
-    }
-  }, [
-    session, selectedItem, isClosed, saveEntryMutation, enqueueEntry,
-    entriesSnapshotByItemId, upsertEntriesSnapshotOptimistic,
-    applyOptimisticRecentEvent, clearSearchAfterSave, focusInputReliably,
-    draftKey, activeSessionQueryKey, queryClient, setToastMessage,
-    setInlineErrorMessage, setInlineErrorDebug, t,
-  ]);
-
-  const submitEntry = useCallback(async () => {
-    if (!selectedItem) return;
-    if (qtyValidation.error || qtyValidation.normalizedQty === null) return;
-
-    if (qtyValidation.confirmWarnings.length > 0) {
-      setPendingQtyConfirm({
-        normalizedQty: qtyValidation.normalizedQty,
-        warnings: qtyValidation.confirmWarnings,
-      });
-      return;
-    }
-
-    if (qtyValidation.wasRounded && qtyValidation.roundedTo !== null) {
-      setQty(String(qtyValidation.roundedTo));
-      setToastMessage(t("toast.rounded"));
-    }
-
-    await submitEntryWithQuantity(qtyValidation.normalizedQty);
-  }, [selectedItem, qtyValidation, submitEntryWithQuantity, setToastMessage, t]);
+  const { enqueueEntry, submitEntryWithQuantity, submitEntry, savePending } = useEntrySubmit({
+    session,
+    isClosed,
+    selectedItem,
+    draftKey,
+    qtyValidation,
+    clearSearchAfterSave,
+    activeSessionQueryKey,
+    entriesSnapshotByItemId,
+    entriesByItemId,
+    setOfflineQueue,
+    focusInputReliably,
+    searchInputRef,
+    setSearchTerm,
+    setDebouncedSearchTerm,
+    setQty,
+    setSelectedItem,
+    setIsDropdownOpen,
+    setHighlightedIndex,
+    setPendingQtyConfirm,
+    setEntriesSnapshot,
+    currentUser,
+    queryClient,
+    setToastMessage,
+    setInlineErrorMessage,
+    setInlineErrorDebug,
+    t,
+    onSaveSuccess: () => {
+      triggerSaveGlow();
+      setSnapshotRefetchCounter((c) => c + 1);
+    },
+  });
 
   // ── Search input handlers ──────────────────────────────────────────
 
@@ -1471,7 +1005,7 @@ export function useFastEntry(params: UseFastEntryParams) {
     groupedRecentJournal,
 
     // Save state
-    savePending: saveEntryMutation.isPending,
+    savePending,
 
     // Format helpers
     formatDateTime,
