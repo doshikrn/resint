@@ -3,8 +3,8 @@
   "version": "0.3.1",
   "private": true,
   "license": "UNLICENSED",
-  "author": "Resident Restaurant",
-  "description": "RESINT — Resident Restaurant Inventory System (frontend)",
+  "author": "Resint",
+  "description": "RESINT — Resint Inventory System (frontend)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

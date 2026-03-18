@@ -35,7 +35,7 @@ const ENV_BADGE_LABEL: Record<string, string> = { development: "DEV", staging: "
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
 
 const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Resint";
-const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/new_logo.svg";
+const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/brand/logo.svg";
 
 const ROLE_LABEL_FALLBACK: Record<string, string> = {
   cook: "Повар",

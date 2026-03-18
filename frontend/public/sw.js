@@ -1,7 +1,7 @@
 // RESINT Service Worker — conservative, cache-first for static assets only.
 // Does NOT cache API responses (existing IndexedDB layer handles offline data).
 
-const CACHE_NAME = "resint-sw-v2";
+const CACHE_NAME = "resint-sw-v3";
 const PRECACHE_URLS = ["/offline.html"];
 
 // --- Install: precache offline fallback ---
@@ -106,7 +106,7 @@ function isStaticAsset(url) {
   // App icons
   if (p.startsWith("/icons/")) return true;
   // Brand assets
-  if (p.startsWith("/brand/") || p === "/new_logo.svg") return true;
+  if (p.startsWith("/brand/")) return true;
   // Font files
   if (/\.(woff2?|ttf|otf)$/i.test(p)) return true;
   return false;
