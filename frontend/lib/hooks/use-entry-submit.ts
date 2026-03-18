@@ -411,6 +411,7 @@ export function useEntrySubmit(params: {
         }
 
         if (!navigator.onLine) {
+          console.info("[entry-submit] navigator offline, enqueuing", { key: idempotencyKey, item_id: selectedItem.id });
           await enqueueEntry({
             idempotencyKey,
             sessionId: session.id,
@@ -515,17 +516,36 @@ export function useEntrySubmit(params: {
             return;
           }
 
-          await enqueueEntry({
-            idempotencyKey,
-            sessionId: session.id,
-            warehouseId: session.warehouse_id,
-            itemId: selectedItem.id,
-            itemName: selectedItem.name,
-            unit: selectedItem.unit,
-            quantity: parsedQty,
-            mode,
-            stationId,
-          });
+          const errInfo = error instanceof ApiRequestError
+            ? { status: error.status, body: error.body.slice(0, 120) }
+            : { message: String(error) };
+          console.warn("[entry-submit] online save failed, enqueuing", { key: idempotencyKey, ...errInfo });
+
+          try {
+            await enqueueEntry({
+              idempotencyKey,
+              sessionId: session.id,
+              warehouseId: session.warehouse_id,
+              itemId: selectedItem.id,
+              itemName: selectedItem.name,
+              unit: selectedItem.unit,
+              quantity: parsedQty,
+              mode,
+              stationId,
+            });
+          } catch (enqueueError) {
+            // If enqueue itself fails (e.g. IndexedDB/localStorage full),
+            // keep the optimistic data in the UI and show a clear error.
+            console.error("[entry-submit] enqueue failed!", enqueueError);
+            const mapped = mapApiError(error, {
+              defaultMessage: "Нет сети — сохранили в очередь",
+            });
+            setToastMessage(mapped.message);
+            setInlineErrorMessage(mapped.inlineMessage);
+            setInlineErrorDebug(mapped.debug ?? null);
+            saveEntryMutation.reset();
+            return;
+          }
           const mapped = mapApiError(error, {
             defaultMessage: "Нет сети — сохранили в очередь",
             queuedOfflineMessage: "Нет сети — сохранили в очередь",

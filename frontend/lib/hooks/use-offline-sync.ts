@@ -74,6 +74,15 @@ export function useOfflineSync(params: {
     isSyncingQueueRef.current = true;
     setIsSyncing(true);
 
+    // Cancel any in-flight TanStack Query refetches for recent data.
+    // When the browser fires 'online', TQ's refetchOnReconnect triggers
+    // refetches that race with this sync.  Those refetches hit the server
+    // BEFORE sync saves the entry, replacing optimistic cache data and
+    // making the entry vanish from the UI.
+    const qc = queryClientRef.current;
+    void qc.cancelQueries({ queryKey: ["recent-entries"] });
+    void qc.cancelQueries({ queryKey: ["recent-events"] });
+
     const now = Date.now();
     setOfflineQueue(
       snapshot.map((item) =>
@@ -87,6 +96,8 @@ export function useOfflineSync(params: {
     let sentCount = 0;
     let conflictCount = 0;
 
+    console.info("[offline-sync] sync start", { items: snapshot.length });
+
     try {
       for (const item of snapshot) {
         if (item.status === "failed_conflict") {
@@ -99,6 +110,7 @@ export function useOfflineSync(params: {
         }
 
         try {
+          console.info("[offline-sync] sending", { key: item.idempotency_key, item_id: item.item_id });
           await saveInventoryEntry({
             sessionId: item.session_id,
             itemId: item.item_id,
@@ -110,8 +122,14 @@ export function useOfflineSync(params: {
             timeoutMs: 8000,
             expectedVersion: item.mode === "set" ? (item.expected_version ?? null) : null,
           });
+          console.info("[offline-sync] sent OK", { key: item.idempotency_key });
           sentCount += 1;
         } catch (error) {
+          const errInfo = error instanceof ApiRequestError
+            ? { status: error.status, body: error.body.slice(0, 200) }
+            : { message: String(error) };
+          console.warn("[offline-sync] send failed", { key: item.idempotency_key, ...errInfo });
+
           if (error instanceof ApiRequestError && error.status === 409) {
             if (error.body.includes("VERSION_CONFLICT")) {
               nextQueue.push({
@@ -177,12 +195,16 @@ export function useOfflineSync(params: {
         }
       }
 
+      // Persist the updated queue to storage first.
       await updateOfflineEntryQueue(nextQueue);
-      setOfflineQueue(nextQueue);
 
+      // If items were successfully sent, invalidate queries and wait for
+      // the refetch to complete BEFORE updating the React queue state.
+      // This prevents a visual gap where the entry is absent from both
+      // the queue (pending) section and the server-fetched (saved) section.
       if (sentCount > 0) {
+        console.info("[offline-sync] synced", { sentCount, conflictCount, remaining: nextQueue.length });
         onSyncSuccessRef.current?.();
-        const qc = queryClientRef.current;
         await Promise.all([
           qc.invalidateQueries({ queryKey: ["recent-entries"] }),
           qc.invalidateQueries({ queryKey: ["recent-events"] }),
@@ -201,6 +223,10 @@ export function useOfflineSync(params: {
       if (conflictCount > 0) {
         setToastMessageRef.current(tRef.current("toast.conflict"));
       }
+
+      // Update React state AFTER queries are refreshed so the entry
+      // transitions directly from "pending" to "saved" with no gap.
+      setOfflineQueue(nextQueue);
     } finally {
       isSyncingQueueRef.current = false;
       setIsSyncing(false);
@@ -237,10 +263,14 @@ export function useOfflineSync(params: {
     })();
 
     const onOnline = () => {
+      console.info("[offline-sync] online event");
       setIsOnline(true);
       void syncOfflineQueue();
     };
-    const onOffline = () => setIsOnline(false);
+    const onOffline = () => {
+      console.info("[offline-sync] offline event");
+      setIsOnline(false);
+    };
 
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
