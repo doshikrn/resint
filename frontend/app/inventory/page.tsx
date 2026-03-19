@@ -81,6 +81,94 @@ const DEPARTMENT_WAREHOUSE_MAP: Record<"kitchen" | "bar", number | null> = {
   bar: parseWarehouseIdEnv(process.env.NEXT_PUBLIC_BAR_WAREHOUSE_ID),
 };
 
+const MENU_TAP_DRAG_THRESHOLD_PX = 10;
+
+type IntentionalMenuTriggerProps = {
+  ariaLabel: string;
+  isOpen: boolean;
+  onToggle: () => void;
+};
+
+function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenuTriggerProps) {
+  const pointerStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const pointerMovedRef = useRef(false);
+
+  const resetGesture = useCallback(() => {
+    pointerStartRef.current = null;
+    pointerMovedRef.current = false;
+  }, []);
+
+  const handlePointerDownCapture = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      resetGesture();
+      return;
+    }
+
+    pointerStartRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    pointerMovedRef.current = false;
+  }, [resetGesture]);
+
+  const handlePointerMoveCapture = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const start = pointerStartRef.current;
+
+    if (!start || start.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = Math.abs(event.clientX - start.x);
+    const deltaY = Math.abs(event.clientY - start.y);
+
+    if (deltaX > MENU_TAP_DRAG_THRESHOLD_PX || deltaY > MENU_TAP_DRAG_THRESHOLD_PX) {
+      pointerMovedRef.current = true;
+    }
+  }, []);
+
+  const handlePointerCancelCapture = useCallback(() => {
+    resetGesture();
+  }, [resetGesture]);
+
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (pointerMovedRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      resetGesture();
+      return;
+    }
+
+    onToggle();
+    resetGesture();
+  }, [onToggle, resetGesture]);
+
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onToggle();
+    }
+  }, [onToggle]);
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="h-9 w-full rounded-lg hover:bg-transparent hover:text-current active:bg-muted/60 sm:w-auto sm:hover:bg-accent sm:hover:text-accent-foreground"
+      aria-label={ariaLabel}
+      aria-haspopup="menu"
+      aria-expanded={isOpen}
+      onPointerDownCapture={handlePointerDownCapture}
+      onPointerMoveCapture={handlePointerMoveCapture}
+      onPointerCancelCapture={handlePointerCancelCapture}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+    >
+      <MoreHorizontal className="h-4 w-4" />
+    </Button>
+  );
+}
+
 // ─── Page component ─────────────────────────────────────────────────
 
 export default function InventoryPage() {
@@ -129,6 +217,7 @@ export default function InventoryPage() {
   const [reportsPanelTab, setReportsPanelTab] = useState<"items" | "people" | "history" | "audit">("items");
   const [reportSearchTerm, setReportSearchTerm] = useState("");
   const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<number | null>(null);
+  const [reportActionsMenuOpen, setReportActionsMenuOpen] = useState(false);
   const [itemHistoryOpen, setItemHistoryOpen] = useState(false);
   const [inlineErrorMessage, setInlineErrorMessage] = useState<string | null>(null);
   const [inlineErrorDebug, setInlineErrorDebug] = useState<string | null>(null);
@@ -489,6 +578,12 @@ export default function InventoryPage() {
     () => revisionHistory.find((row) => row.id === reportSessionId) ?? null,
     [reportSessionId, revisionHistory],
   );
+
+  useEffect(() => {
+    if (!selectedReportSession) {
+      setReportActionsMenuOpen(false);
+    }
+  }, [selectedReportSession]);
 
   const canEditClosedRevision = Boolean(currentUser && checkCanManageRevision(currentUser.role));
   const canDeleteRevision = Boolean(currentUser && checkCanManageRevision(currentUser.role));
@@ -931,11 +1026,20 @@ export default function InventoryPage() {
                           </Button>
                         ) : null}
                         {canDeleteRevision ? (
-                          <DropdownMenu>
+                          <DropdownMenu
+                            open={reportActionsMenuOpen}
+                            onOpenChange={(nextOpen) => {
+                              if (!nextOpen) {
+                                setReportActionsMenuOpen(false);
+                              }
+                            }}
+                          >
                             <DropdownMenuTrigger asChild>
-                              <Button type="button" variant="ghost" className="h-9 w-full rounded-lg sm:w-auto" aria-label="Дополнительные действия">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
+                              <IntentionalMenuTrigger
+                                ariaLabel="Дополнительные действия"
+                                isOpen={reportActionsMenuOpen}
+                                onToggle={() => setReportActionsMenuOpen((currentOpen) => !currentOpen)}
+                              />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
@@ -943,6 +1047,7 @@ export default function InventoryPage() {
                                 disabled={!selectedReportSession.is_closed || deleteSessionMutation.isPending}
                                 onClick={() => {
                                   if (!selectedReportSession.is_closed) return;
+                                  setReportActionsMenuOpen(false);
                                   setDeleteConfirmSessionId(selectedReportSession.id);
                                 }}>
                                 {deleteSessionMutation.isPending ? t("inventory.reports.deleting") : t("inventory.reports.delete_revision")}
