@@ -100,11 +100,13 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
     pointerMovedRef.current = false;
   }, []);
 
-  const handlePointerDownCapture = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) {
       resetGesture();
       return;
     }
+
+    event.preventDefault();
 
     pointerStartRef.current = {
       pointerId: event.pointerId,
@@ -114,7 +116,7 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
     pointerMovedRef.current = false;
   }, [resetGesture]);
 
-  const handlePointerMoveCapture = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const start = pointerStartRef.current;
 
     if (!start || start.pointerId !== event.pointerId) {
@@ -129,21 +131,30 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
     }
   }, []);
 
-  const handlePointerCancelCapture = useCallback(() => {
-    resetGesture();
-  }, [resetGesture]);
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const start = pointerStartRef.current;
 
-  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    if (pointerMovedRef.current) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (!start || start.pointerId !== event.pointerId) {
       resetGesture();
       return;
     }
 
-    onToggle();
+    const deltaX = Math.abs(event.clientX - start.x);
+    const deltaY = Math.abs(event.clientY - start.y);
+    const shouldTreatAsTap = !pointerMovedRef.current
+      && deltaX <= MENU_TAP_DRAG_THRESHOLD_PX
+      && deltaY <= MENU_TAP_DRAG_THRESHOLD_PX;
+
     resetGesture();
+
+    if (shouldTreatAsTap) {
+      onToggle();
+    }
   }, [onToggle, resetGesture]);
+
+  const handlePointerCancel = useCallback(() => {
+    resetGesture();
+  }, [resetGesture]);
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -160,10 +171,10 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
       aria-label={ariaLabel}
       aria-haspopup="menu"
       aria-expanded={isOpen}
-      onPointerDownCapture={handlePointerDownCapture}
-      onPointerMoveCapture={handlePointerMoveCapture}
-      onPointerCancelCapture={handlePointerCancelCapture}
-      onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onKeyDown={handleKeyDown}
     >
       <MoreHorizontal className="h-5 w-5 sm:h-4 sm:w-4" />
