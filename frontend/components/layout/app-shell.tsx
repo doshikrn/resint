@@ -275,7 +275,7 @@ export function AppShell({ children }: AppShellProps) {
     setMobileNavOpen(false);
   }, [pathname]);
 
-  // Handle 401 — clear localStorage and redirect
+  // Handle confirmed auth expiry.
   useEffect(() => {
     if (isLoginPage || isLoggingOut) return;
     if (is401) {
@@ -289,11 +289,11 @@ export function AppShell({ children }: AppShellProps) {
     if (isLoginPage) {
       return;
     }
-    if (!profileLoaded || currentUser) {
+    if (!profileLoaded || currentUser || !is401) {
       return;
     }
     router.replace("/login");
-  }, [currentUser, isLoginPage, profileLoaded, router]);
+  }, [currentUser, is401, isLoginPage, profileLoaded, router]);
 
   const visibleNavItems = useMemo(() => {
     const role = currentUser?.role;
@@ -351,6 +351,20 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     window.location.replace("/login");
+  }
+
+  if (profileLoaded && !currentUser && !is401 && !forceAuthMode) {
+    return (
+      <div className="min-h-[100dvh] bg-muted/35 p-4 md:p-8">
+        <div
+          className="pointer-events-none fixed inset-0 bg-[radial-gradient(1200px_500px_at_50%_-50%,hsl(var(--primary)/0.12),transparent)]"
+          aria-hidden="true"
+        />
+        <div className="relative mx-auto mt-20 max-w-md rounded-2xl border border-border/70 bg-card/95 p-6 text-center text-sm text-muted-foreground shadow-sm">
+          {t("common.checking_account")}
+        </div>
+      </div>
+    );
   }
 
   if (isLoginPage || forceAuthMode || (profileLoaded && !currentUser)) {

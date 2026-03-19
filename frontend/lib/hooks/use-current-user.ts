@@ -49,17 +49,21 @@ export function useCurrentUser() {
     }
   }, [query.data]);
 
-  // Clear stale cached user when the auth query fails (401, timeout, network error).
-  // Without this, cookies can be cleared while cachedUser state stays non-null,
-  // leaving the app in a broken "authenticated" state with all API calls failing.
+  // Only clear the cached user when the backend confirms the session is invalid.
+  // Transient network / timeout errors should not force a logout while refresh or
+  // a later retry can still recover the session.
   useEffect(() => {
     if (!query.isError) return;
-    setCachedUser(null);
     const status =
       query.error && "status" in query.error
         ? (query.error as { status: number }).status
         : 0;
-    if (status === 401 && typeof window !== "undefined") {
+    if (status !== 401) {
+      return;
+    }
+
+    setCachedUser(null);
+    if (typeof window !== "undefined") {
       window.localStorage.removeItem(CURRENT_USER_CACHE_KEY);
     }
   }, [query.isError, query.error]);
