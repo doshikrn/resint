@@ -13,6 +13,7 @@ const PROTECTED_QUERY_PREFIXES = new Set([
   "session-progress",
   "items-frequent",
   "items-recent",
+  "online-users",
   "warehouses-manager-fallback",
 ]);
 

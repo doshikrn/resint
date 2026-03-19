@@ -14,9 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useHeartbeat } from "@/lib/hooks/use-heartbeat";
-import { useOnlineUsers } from "@/lib/hooks/use-online-users";
 import { useMaintenanceMode } from "@/lib/hooks/use-maintenance-mode";
+import { usePresence } from "@/lib/hooks/use-presence";
 import { useCurrentUser, CURRENT_USER_CACHE_KEY } from "@/lib/hooks/use-current-user";
 import { resetAuthBootstrapState, resetProtectedClientState } from "@/lib/session-client-state";
 import { cn } from "@/lib/utils";
@@ -276,8 +275,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const profileLoaded = authResolved || authTimedOut;
   const pollingEnabled = profileLoaded && !!currentUser && !isLoginPage;
-  useHeartbeat(pollingEnabled);
-  const onlineUsers = useOnlineUsers(pollingEnabled);
+  const { onlineUsers, onlineUsersCount } = usePresence(pollingEnabled);
   const maintenanceMode = useMaintenanceMode(pollingEnabled);
 
   useEffect(() => {
@@ -533,21 +531,21 @@ export function AppShell({ children }: AppShellProps) {
                     </button>
                   ))}
                 </div>
-                {onlineUsers.length > 0 ? (
+                {onlineUsersCount > 0 ? (
                   <div className="group relative">
-                    <div className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/85 px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+                    <div data-testid="app-online-users-badge" className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/85 px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
                       <Users className="h-3.5 w-3.5" />
-                      <span>{onlineUsers.length}</span>
+                      <span data-testid="app-online-users-count">{onlineUsersCount}</span>
                       <span className="hidden sm:inline">{t("common.online_count")}</span>
                     </div>
                     <div className="pointer-events-none absolute right-0 top-full z-50 pt-1.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                      <div className="w-56 rounded-xl border border-border/70 bg-card p-3 shadow-lg">
+                      <div data-testid="app-online-users-panel" className="w-56 rounded-xl border border-border/70 bg-card p-3 shadow-lg">
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           {t("common.online_title")}
                         </p>
                         <div className="space-y-1.5">
                           {onlineUsers.map((u) => (
-                            <div key={u.id} className="flex items-center justify-between gap-2">
+                            <div key={u.id} data-testid="app-online-user-row" className="flex items-center justify-between gap-2">
                               <p className="truncate text-sm font-medium">
                                 {u.full_name || u.username}
                               </p>

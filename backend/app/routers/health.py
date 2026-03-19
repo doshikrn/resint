@@ -139,9 +139,9 @@ def system_status(
     except Exception:
         active_revisions = None
 
-    # Online users (seen in last 60s)
+    # Online users (seen in last 90s)
     try:
-        cutoff = now - timedelta(seconds=60)
+        cutoff = now - timedelta(seconds=90)
         online_users_count = (
             db.query(func.count(User.id))
             .filter(

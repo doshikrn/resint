@@ -415,7 +415,7 @@ def admin_delete_user(
 
 # ---------- heartbeat / online presence ----------
 
-ONLINE_THRESHOLD_SECONDS = 60
+ONLINE_THRESHOLD_SECONDS = 90
 
 
 class OnlineUser(BaseModel):
