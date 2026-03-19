@@ -69,14 +69,9 @@ function setRefreshCookie(response: NextResponse, value: string, maxAge: number)
   });
 }
 
-function clearAuthCookies(response: NextResponse) {
-  setAccessCookie(response, "", 0);
-  setRefreshCookie(response, "", 0);
-}
-
 function createUnauthorizedResponse() {
   const unauthorized = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  clearAuthCookies(unauthorized);
+  unauthorized.headers.set("x-auth-invalid", "true");
   return unauthorized;
 }
 
@@ -275,7 +270,7 @@ async function forward(request: NextRequest, path: string[]) {
   }
 
   if (backendResponse.status === 401) {
-    clearAuthCookies(response);
+    response.headers.set("x-auth-invalid", "true");
   }
 
   return response;

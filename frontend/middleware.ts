@@ -18,12 +18,6 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (hasSessionCookie && pathname === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/inventory";
-    return NextResponse.redirect(url);
-  }
-
   return NextResponse.next();
 }
 

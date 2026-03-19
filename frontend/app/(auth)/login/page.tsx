@@ -2,15 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { getCurrentUser } from "@/lib/api/http";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
+import { CURRENT_USER_CACHE_KEY, CURRENT_USER_QUERY_KEY } from "@/lib/hooks/use-current-user";
+import { resetAuthBootstrapState, resetProtectedClientState } from "@/lib/session-client-state";
 
 const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "ZERE Restaurant";
 const BRAND_LOGO_SRC = process.env.NEXT_PUBLIC_BRAND_LOGO_SRC ?? "/brand/logo.png";
 
 export default function LoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { user: currentUser, authResolved } = useCurrentUser();
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -20,6 +27,15 @@ export default function LoginPage() {
   useEffect(() => {
     document.title = "RESINT — Вход";
   }, []);
+
+  useEffect(() => {
+    if (pending) {
+      return;
+    }
+    if (authResolved && currentUser) {
+      router.replace("/inventory");
+    }
+  }, [authResolved, currentUser, pending, router]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,6 +76,23 @@ export default function LoginPage() {
         }
 
         throw new Error(message || "Не удалось войти");
+      }
+      await resetProtectedClientState(queryClient);
+      await resetAuthBootstrapState(queryClient);
+      try {
+        const currentUser = await queryClient.fetchQuery({
+          queryKey: CURRENT_USER_QUERY_KEY,
+          queryFn: () => getCurrentUser(3500),
+          retry: 1,
+          staleTime: 0,
+        });
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUser));
+        }
+      } catch {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(CURRENT_USER_CACHE_KEY);
+        }
       }
       router.replace("/inventory");
       router.refresh();

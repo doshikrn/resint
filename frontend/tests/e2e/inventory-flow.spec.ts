@@ -302,6 +302,41 @@ test.describe("Inventory revision critical flow", () => {
     });
   });
 
+  test("relogin restores inventory bootstrap and reload keeps auth", async ({ page }) => {
+    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+    await login(page);
+    const { zone, warehouse, item } = await ensureInventoryFixtures(page.request, suffix);
+
+    await openInventoryWithSelection(page, zone.name, warehouse.name);
+    await selectInventoryItem(page, item.name);
+    await page.getByTestId("inventory-qty-input").fill("5");
+    await clickSaveEntry(page);
+
+    const recentBlock = page.getByTestId("inventory-recent-block");
+    await expect(recentBlock).toContainText(item.name, { timeout: 15_000 });
+    await expect(recentBlock).toContainText("saved", { timeout: 15_000 });
+
+    await logout(page);
+    await login(page);
+
+    await openInventoryWithSelection(page, zone.name, warehouse.name);
+    await expect(page.getByText(/Session ID:/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("inventory-progress-card")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("inventory-recent-block")).toContainText(item.name, {
+      timeout: 15_000,
+    });
+
+    await page.reload();
+
+    await expect(page).toHaveURL(/\/inventory/, { timeout: 20_000 });
+    await expect(page.getByText(/Session ID:/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("inventory-progress-card")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("inventory-recent-block")).toContainText(item.name, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("login-submit")).toHaveCount(0);
+  });
+
   test("my/all toggle persists after reload and does not hide valid entries", async ({ page }) => {
     const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
     await login(page);

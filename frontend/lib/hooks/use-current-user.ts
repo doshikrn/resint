@@ -77,10 +77,12 @@ export function useCurrentUser() {
   const errorStatus = getErrorStatus(query.error);
   const is401 = errorStatus === 401;
   const isRecoverableError = query.isError && errorStatus !== 401;
+  const authResolved = Boolean(query.data) || query.isFetchedAfterMount || query.isError;
 
   return {
     user,
-    isLoading: query.isLoading && !cachedUser,
+    isLoading: !authResolved,
+    authResolved,
     is401: Boolean(is401),
     isRecoverableError,
     errorStatus,

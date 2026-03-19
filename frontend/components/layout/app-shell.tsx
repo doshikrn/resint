@@ -4,6 +4,7 @@ import { Boxes, ClipboardList, Database, Menu, Package, Settings, Users } from "
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +18,7 @@ import { useHeartbeat } from "@/lib/hooks/use-heartbeat";
 import { useOnlineUsers } from "@/lib/hooks/use-online-users";
 import { useMaintenanceMode } from "@/lib/hooks/use-maintenance-mode";
 import { useCurrentUser, CURRENT_USER_CACHE_KEY } from "@/lib/hooks/use-current-user";
+import { resetAuthBootstrapState, resetProtectedClientState } from "@/lib/session-client-state";
 import { cn } from "@/lib/utils";
 import { IosInstallPrompt } from "@/components/ui/ios-install-prompt";
 import { canManageCatalog, canManageUsers, canManageBackups } from "@/lib/permissions";
@@ -246,11 +248,12 @@ function HeaderWordmark() {
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { t, language, setLanguage } = useLanguage();
   const isLoginPage = pathname === "/login";
   const {
     user: currentUser,
-    isLoading: userIsLoading,
+    authResolved,
     is401,
     isRecoverableError,
     retryAuthCheck,
@@ -263,15 +266,15 @@ export function AppShell({ children }: AppShellProps) {
   // Safety timeout: if auth check has not completed in time, switch to a
   // recoverable fallback instead of keeping the shell in endless loading.
   useEffect(() => {
-    if (!userIsLoading) {
+    if (authResolved) {
       setAuthTimedOut(false);
       return;
     }
     const id = setTimeout(() => setAuthTimedOut(true), 10_000);
     return () => clearTimeout(id);
-  }, [userIsLoading]);
+  }, [authResolved]);
 
-  const profileLoaded = !userIsLoading || authTimedOut;
+  const profileLoaded = authResolved || authTimedOut;
   const pollingEnabled = profileLoaded && !!currentUser && !isLoginPage;
   useHeartbeat(pollingEnabled);
   const onlineUsers = useOnlineUsers(pollingEnabled);
@@ -335,6 +338,8 @@ export function AppShell({ children }: AppShellProps) {
 
     setIsLoggingOut(true);
     setForceAuthMode(true);
+    await resetProtectedClientState(queryClient);
+    await resetAuthBootstrapState(queryClient);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(CURRENT_USER_CACHE_KEY);
     }
