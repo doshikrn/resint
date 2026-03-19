@@ -34,6 +34,7 @@ export function useOfflineSync(params: {
   const [isOnline, setIsOnline] = useState(true);
   const [offlineQueue, setOfflineQueue] = useState<OfflineEntryQueueItem[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [offlineQueueLoaded, setOfflineQueueLoaded] = useState(false);
 
   const isSyncingQueueRef = useRef(false);
 
@@ -296,6 +297,8 @@ export function useOfflineSync(params: {
         setOfflineQueue(await loadOfflineEntryQueue());
       } catch {
         setOfflineQueue([]);
+      } finally {
+        setOfflineQueueLoaded(true);
       }
       void syncOfflineQueue();
     })();
@@ -411,6 +414,7 @@ export function useOfflineSync(params: {
     isOnline,
     isSyncing,
     offlineQueue,
+    offlineQueueLoaded,
     setOfflineQueue,
     syncStatus,
     isSyncingQueueRef,

@@ -110,6 +110,11 @@ export function useFastEntry(params: UseFastEntryParams) {
 
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const recentFilterStorageKey = useMemo(
+    () =>
+      `inventory_recent_filter_mine_v1:${currentUser?.username ?? "anon"}:${selectedWarehouseId ?? "none"}`,
+    [currentUser?.username, selectedWarehouseId],
+  );
 
   // ── Success glow ───────────────────────────────────────────────────
   const { glowing: saveGlowActive, glowKey: saveGlowKey, trigger: triggerSaveGlow } = useSuccessGlow();
@@ -133,7 +138,7 @@ export function useFastEntry(params: UseFastEntryParams) {
 
   // ── Misc state ─────────────────────────────────────────────────────
   const [queueRepairOpen, setQueueRepairOpen] = useState(false);
-  const [recentFilterMine, setRecentFilterMine] = useState(true);
+  const [recentFilterMine, setRecentFilterMine] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────────
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -154,6 +159,7 @@ export function useFastEntry(params: UseFastEntryParams) {
   const {
     isOnline,
     offlineQueue,
+    offlineQueueLoaded,
     setOfflineQueue,
     syncStatus,
     handleSyncRetry,
@@ -192,6 +198,12 @@ export function useFastEntry(params: UseFastEntryParams) {
     }
     return map;
   }, [entriesSnapshot]);
+
+  const offlineQueueRef = useRef(offlineQueue);
+  offlineQueueRef.current = offlineQueue;
+
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
 
   // ── Helpers ────────────────────────────────────────────────────────
 
@@ -322,7 +334,9 @@ export function useFastEntry(params: UseFastEntryParams) {
     queryFn: () => getSessionInventoryProgress(session?.id as number),
     enabled: Boolean(session?.id),
     staleTime: 5_000,
-    refetchOnWindowFocus: false,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // ── Mutations ──────────────────────────────────────────────────────
@@ -362,6 +376,27 @@ export function useFastEntry(params: UseFastEntryParams) {
 
   // ── Effects ────────────────────────────────────────────────────────
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const raw = window.localStorage.getItem(recentFilterStorageKey);
+    if (raw === "mine") {
+      setRecentFilterMine(true);
+      return;
+    }
+    if (raw === "all") {
+      setRecentFilterMine(false);
+      return;
+    }
+
+    setRecentFilterMine(false);
+  }, [recentFilterStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(recentFilterStorageKey, recentFilterMine ? "mine" : "all");
+  }, [recentFilterMine, recentFilterStorageKey]);
+
   // Debounce search
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -382,7 +417,81 @@ export function useFastEntry(params: UseFastEntryParams) {
     }
   }, [selectedWarehouseId]);
 
-  // Entries snapshot fetch
+  const mergePendingQueueIntoSnapshot = useCallback(
+    (baseRows: InventoryEntrySnapshotRow[]) => {
+      const activeSessionId = session?.id;
+      if (!activeSessionId) {
+        return baseRows;
+      }
+
+      const rowsByItemId = new Map<number, InventoryEntrySnapshotRow>();
+      for (const row of baseRows) {
+        rowsByItemId.set(row.item_id, row);
+      }
+
+      const queueForSession = offlineQueueRef.current
+        .filter((item) => item.session_id === activeSessionId)
+        .sort(
+          (left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
+        );
+
+      for (const item of queueForSession) {
+        const previous = rowsByItemId.get(item.item_id);
+        const nextQty = item.mode === "add" ? (previous?.qty ?? 0) + item.qty : item.qty;
+        rowsByItemId.set(item.item_id, {
+          item_id: item.item_id,
+          qty: nextQty,
+          unit: item.unit,
+          updated_at: item.created_at,
+          updated_by_user: previous?.updated_by_user ?? {
+            id: -1,
+            username: currentUserRef.current?.username ?? "offline",
+            display_name:
+              currentUserRef.current?.full_name ?? currentUserRef.current?.username ?? "offline",
+          },
+        });
+      }
+
+      return Array.from(rowsByItemId.values()).sort(
+        (left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime(),
+      );
+    },
+    [session?.id],
+  );
+
+  const refetchEntriesSnapshot = useCallback(
+    async (options?: { hydrateFromCache?: boolean }) => {
+      if (!session?.id || isClosed || !offlineQueueLoaded) {
+        setEntriesSnapshot([]);
+        return;
+      }
+
+      const sessionId = session.id;
+      const hydrateFromCache = options?.hydrateFromCache ?? false;
+
+      if (hydrateFromCache) {
+        const cached = await loadEntriesSnapshotCache(sessionId).catch(() => null);
+        if (cached?.entries) {
+          setEntriesSnapshot(mergePendingQueueIntoSnapshot(cached.entries));
+        }
+      }
+
+      try {
+        const fresh = await getSessionEntriesSnapshot(sessionId);
+        const merged = mergePendingQueueIntoSnapshot(fresh);
+        setEntriesSnapshot(merged);
+        await saveEntriesSnapshotCache({
+          session_id: sessionId,
+          fetched_at: Date.now(),
+          entries: merged,
+        }).catch(() => {});
+      } catch {
+        // Keep last snapshot/cache on transient failures.
+      }
+    },
+    [isClosed, mergePendingQueueIntoSnapshot, offlineQueueLoaded, session?.id],
+  );
+
   useEffect(() => {
     if (!session?.id || isClosed) {
       setEntriesSnapshot([]);
@@ -390,34 +499,36 @@ export function useFastEntry(params: UseFastEntryParams) {
     }
 
     let cancelled = false;
-    const sessionId = session.id;
 
     void (async () => {
-      try {
-        const cached = await loadEntriesSnapshotCache(sessionId).catch(() => null);
-        if (cancelled) return;
-        if (cached?.entries) {
-          setEntriesSnapshot(cached.entries);
-        }
-
-        const fresh = await getSessionEntriesSnapshot(sessionId);
-        if (cancelled) return;
-        setEntriesSnapshot(fresh);
-        await saveEntriesSnapshotCache({
-          session_id: sessionId,
-          fetched_at: Date.now(),
-          entries: fresh,
-        }).catch(() => {});
-      } catch {
-        // Silently fall back to cache
-      }
+      if (cancelled) return;
+      await refetchEntriesSnapshot({ hydrateFromCache: true });
     })();
 
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClosed, session?.id, snapshotRefetchCounter]);
+  }, [isClosed, refetchEntriesSnapshot, session?.id, snapshotRefetchCounter]);
+
+  useEffect(() => {
+    if (!session?.id || isClosed || !offlineQueueLoaded || typeof window === "undefined") {
+      return;
+    }
+
+    const handleRefresh = () => {
+      void refetchEntriesSnapshot();
+    };
+
+    const intervalId = window.setInterval(handleRefresh, 10_000);
+    window.addEventListener("focus", handleRefresh);
+    window.addEventListener("online", handleRefresh);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener("online", handleRefresh);
+    };
+  }, [isClosed, offlineQueueLoaded, refetchEntriesSnapshot, session?.id]);
 
   // ── Computed from queries ──────────────────────────────────────────
 
@@ -456,6 +567,32 @@ export function useFastEntry(params: UseFastEntryParams) {
   const qtyInputMode: React.HTMLAttributes<HTMLInputElement>["inputMode"] = isWeightUnit ? "decimal" : "numeric";
   const hotButtons = isWeightUnit ? ["+0.1", "+0.5", "+1", "+2"] : ["+0.1", "+1", "+2", "+5"];
   const sessionProgress: InventorySessionProgress | undefined = sessionProgressQuery.data;
+  const displayedSessionProgress = useMemo(() => {
+    const totalCountedItems = Math.max(sessionProgress?.total_counted_items ?? 0, entriesSnapshot.length);
+    const myCountedItems = Math.max(
+      sessionProgress?.my_counted_items ?? 0,
+      entriesSnapshot.filter((row) => row.updated_by_user.username === currentUser?.username).length,
+    );
+    const latestLocalActivity = entriesSnapshot.reduce<string | null>((latest, row) => {
+      if (!latest) return row.updated_at;
+      return new Date(row.updated_at).getTime() > new Date(latest).getTime() ? row.updated_at : latest;
+    }, null);
+    const lastActivityAt = latestLocalActivity ?? sessionProgress?.last_activity_at ?? null;
+
+    if (!session?.id) {
+      return sessionProgress;
+    }
+
+    return {
+      session_id: session.id,
+      warehouse_id: session.warehouse_id,
+      status: sessionProgress?.status ?? session.status,
+      is_session_closed: sessionProgress?.is_session_closed ?? session.is_closed,
+      total_counted_items: totalCountedItems,
+      my_counted_items: myCountedItems,
+      last_activity_at: lastActivityAt,
+    } satisfies InventorySessionProgress;
+  }, [currentUser?.username, entriesSnapshot, session?.id, session?.is_closed, session?.status, session?.warehouse_id, sessionProgress]);
 
   // ── Qty validation ─────────────────────────────────────────────────
 
@@ -1036,7 +1173,7 @@ export function useFastEntry(params: UseFastEntryParams) {
     setQueueRepairOpen,
 
     // Session progress
-    sessionProgress,
+    sessionProgress: displayedSessionProgress,
     sessionProgressLoading: sessionProgressQuery.isLoading,
 
     // Recent journal
