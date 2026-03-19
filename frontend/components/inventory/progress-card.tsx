@@ -20,7 +20,7 @@ export function ProgressCard({
   return (
     <section
       data-testid="inventory-progress-card"
-      className="space-y-4 rounded-2xl border border-border/70 bg-card/95 p-4 shadow-sm transition-all duration-150 hover:shadow-md motion-reduce:transition-none md:p-5"
+      className="space-y-3 rounded-2xl border border-border/60 bg-card/95 p-4 shadow-sm md:p-5"
     >
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-wide">{t("inventory.progress.title")}</h2>
@@ -33,8 +33,8 @@ export function ProgressCard({
         </div>
       ) : sessionProgress ? (
         <>
-          <div className="rounded-xl border border-border/70 bg-background/85 p-3 shadow-sm">
-            <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-border/50 bg-background/80 p-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               <span>
                 {t("inventory.progress.items_counted")}:{" "}
                 <strong data-testid="inventory-progress-total" className="font-semibold tabular-nums text-foreground">
@@ -57,8 +57,8 @@ export function ProgressCard({
           </div>
         </>
       ) : (
-        <div className="rounded-xl border border-border/70 bg-background/85 p-3 shadow-sm">
-          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+        <div className="rounded-xl border border-border/50 bg-background/80 p-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span>
               {t("inventory.progress.items_counted")}:{" "}
               <strong data-testid="inventory-progress-total" className="font-semibold tabular-nums text-foreground">0</strong>

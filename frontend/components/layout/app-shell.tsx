@@ -220,9 +220,9 @@ function HeaderWordmark() {
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 
   return (
-    <div className="flex select-none items-center gap-4 leading-none">
+    <div className="flex select-none items-center gap-3 leading-none">
       {!logoLoadFailed ? (
-        <div className="h-12 w-[120px] overflow-hidden">
+        <div className="h-9 w-[90px] overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={BRAND_LOGO_SRC}
@@ -233,10 +233,10 @@ function HeaderWordmark() {
         </div>
       ) : null}
       <div className="flex flex-col items-start">
-        <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground/70">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-foreground/70">
           ZERE
         </p>
-        <p className="-mt-0.5 text-[10px] font-normal tracking-wide text-muted-foreground">
+        <p className="-mt-0.5 text-[9px] font-normal tracking-wide text-muted-foreground">
           Restaurant
         </p>
       </div>
@@ -465,7 +465,7 @@ export function AppShell({ children }: AppShellProps) {
 
         <div className="min-w-0 w-full flex-1 md:flex md:flex-col md:min-h-0">
           <header className="shrink-0 sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-xl">
-            <div className="relative flex h-16 items-center px-4 md:h-24 md:px-6">
+            <div className="relative flex h-14 items-center px-3 md:h-14 md:px-5">
               <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
                 <SheetTrigger asChild>
                   <Button variant="outline" size="icon" className="relative z-10 md:hidden">
@@ -509,12 +509,12 @@ export function AppShell({ children }: AppShellProps) {
                 </SheetContent>
               </Sheet>
 
-              <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
+              <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:flex md:items-center md:gap-2">
                 <HeaderWordmark />
               </div>
 
-              <div className="relative z-10 ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
-                <div className="flex shrink-0 items-center rounded-lg border border-border/70 bg-background/85 p-0.5 shadow-sm">
+              <div className="relative z-10 ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
+                <div className="flex shrink-0 items-center rounded-lg border border-border/60 bg-background/80 p-0.5">
                   {LANGUAGES.map((lang) => (
                     <button
                       key={lang}
@@ -533,7 +533,7 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
                 {onlineUsersCount > 0 ? (
                   <div className="group relative">
-                    <div data-testid="app-online-users-badge" className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/85 px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+                    <div data-testid="app-online-users-badge" className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground">
                       <Users className="h-3.5 w-3.5" />
                       <span data-testid="app-online-users-count">{onlineUsersCount}</span>
                       <span className="hidden sm:inline">{t("common.online_count")}</span>
@@ -563,7 +563,7 @@ export function AppShell({ children }: AppShellProps) {
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="flex min-w-0 items-center gap-2.5 rounded-xl border border-border/70 bg-background/85 px-3 py-1.5 shadow-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex min-w-0 items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <div className="hidden text-right sm:block">
                         <p className="max-w-[160px] truncate text-sm font-medium leading-tight">
@@ -578,12 +578,12 @@ export function AppShell({ children }: AppShellProps) {
                       <p className="min-w-0 max-w-[80px] truncate text-sm font-medium sm:hidden sm:max-w-[120px]">
                         {currentUserDisplayName}
                       </p>
-                      <div className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary ring-1 ring-primary/20">
+                      <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/12 text-[11px] font-semibold text-primary ring-1 ring-primary/20">
                         {currentUserInitials}
                       </div>
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44 p-1">
+                  <DropdownMenuContent align="end" className="w-40 p-1">
                     <DropdownMenuItem
                       className="rounded-md"
                       onSelect={() => {
@@ -613,7 +613,7 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           )}
 
-          <main className="relative mx-auto w-full max-w-7xl overflow-x-hidden px-3 pt-4 sm:px-4 sm:pt-6 md:flex md:flex-1 md:flex-col md:min-h-0 md:overflow-y-auto md:px-6 md:pb-8 pb-[calc(6rem+env(safe-area-inset-bottom))]">
+          <main className="relative mx-auto w-full max-w-7xl overflow-x-hidden px-3 pt-3 sm:px-4 sm:pt-4 md:flex md:flex-1 md:flex-col md:min-h-0 md:overflow-y-auto md:px-6 md:pb-6 pb-[calc(5rem+env(safe-area-inset-bottom))]">
             {children}
           </main>
         </div>
@@ -639,11 +639,11 @@ export function AppShell({ children }: AppShellProps) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[11px] min-h-[44px]",
+                  "flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-[11px] font-medium min-h-[48px]",
                   active ? "text-primary" : "text-muted-foreground",
                 )}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-5 w-5" />
                 <span>{t(item.labelKey)}</span>
               </Link>
             );

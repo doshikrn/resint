@@ -156,7 +156,7 @@ export default function SettingsPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold tracking-tight">{t("settings.title")}</h1>
-        <div className="h-64 animate-pulse rounded-2xl border border-border/70 bg-card/95" />
+        <div className="h-64 animate-pulse rounded-2xl border border-border/60 bg-card/95" />
       </div>
     );
   }
@@ -175,7 +175,7 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Profile card ── */}
-      <section className="space-y-4 rounded-2xl border border-border/70 bg-card/95 p-6 shadow-sm">
+      <section className="space-y-4 rounded-2xl border border-border/60 bg-card/95 p-6 shadow-sm">
         <div>
           <h2 className="text-lg font-semibold">{t("settings.profile")}</h2>
           <p className="text-sm text-muted-foreground">{t("settings.profile_desc")}</p>
@@ -214,7 +214,7 @@ export default function SettingsPage() {
       </section>
 
       {/* ── Password card ── */}
-      <section className="space-y-4 rounded-2xl border border-border/70 bg-card/95 p-6 shadow-sm">
+      <section className="space-y-4 rounded-2xl border border-border/60 bg-card/95 p-6 shadow-sm">
         <div>
           <h2 className="text-lg font-semibold">{t("settings.password")}</h2>
           <p className="text-sm text-muted-foreground">{t("settings.password_desc")}</p>
@@ -280,7 +280,7 @@ export default function SettingsPage() {
       </section>
 
       {/* ── Language card ── */}
-      <section className="space-y-4 rounded-2xl border border-border/70 bg-card/95 p-6 shadow-sm">
+      <section className="space-y-4 rounded-2xl border border-border/60 bg-card/95 p-6 shadow-sm">
         <div>
           <h2 className="text-lg font-semibold">{t("settings.language")}</h2>
           <p className="text-sm text-muted-foreground">{t("settings.language_desc")}</p>
@@ -296,7 +296,7 @@ export default function SettingsPage() {
                 "rounded-lg border px-4 py-2 text-sm font-medium transition-all",
                 language === lang
                   ? "border-primary/40 bg-primary text-primary-foreground shadow-sm"
-                  : "border-border/70 bg-background text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground",
+                  : "border-border/60 bg-background text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground",
               )}
             >
               {lang === "ru" ? t("settings.language_ru") : t("settings.language_kk")}
@@ -309,7 +309,7 @@ export default function SettingsPage() {
       {toastMessage && (
         <div
           className={cn(
-            "fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] inset-x-4 sm:inset-x-auto sm:right-6 sm:left-auto max-w-sm mx-auto sm:mx-0 z-50 rounded-md px-4 py-2 text-sm shadow-lg",
+            "fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] inset-x-4 sm:inset-x-auto sm:right-6 sm:left-auto max-w-sm mx-auto sm:mx-0 z-50 rounded-xl px-4 py-2.5 text-sm shadow-lg",
             toastError
               ? "bg-destructive text-destructive-foreground"
               : "bg-foreground text-background",

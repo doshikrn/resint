@@ -810,8 +810,8 @@ export default function ItemsPage() {
   }, [deferredBulkText]);
 
   return (
-    <section className="space-y-6 rounded-3xl border border-border/60 bg-card/65 p-3 shadow-sm md:p-5">
-      <header className="rounded-2xl border border-border/70 bg-card/95 p-5 shadow-sm">
+    <section className="space-y-6 rounded-2xl border border-border/60 bg-card/60 p-3 shadow-sm md:p-5">
+      <header className="rounded-2xl border border-border/60 bg-card/95 p-5 shadow-sm">
         <h1 className="text-2xl font-semibold tracking-tight">{t("items.heading")}</h1>
         <p className="mt-3 max-w-2xl border-t pt-3 text-sm leading-relaxed text-muted-foreground">
           {t("items.description")}
@@ -824,7 +824,7 @@ export default function ItemsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 rounded-2xl border border-border/70 bg-card/95 p-5 shadow-sm md:grid-cols-3">
+      <div className="grid gap-4 rounded-2xl border border-border/60 bg-card/95 p-5 shadow-sm md:grid-cols-3">
         <div className="space-y-1">
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             {t("items.zone_label")}
@@ -859,7 +859,7 @@ export default function ItemsPage() {
             />
           </form>
           {searchOpen && searchResults.length > 0 && (
-            <div className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border/70 bg-card shadow-lg">
+            <div className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border/60 bg-card shadow-lg">
               <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground">
                 {t("items.search_found")}: {searchResults.length}
               </div>
@@ -881,7 +881,7 @@ export default function ItemsPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border/70 bg-card/95 p-5 shadow-sm">
+      <div className="rounded-2xl border border-border/60 bg-card/95 p-5 shadow-sm">
         <h2 className="text-base font-semibold tracking-tight">{t("items.add_one_title")}</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-4">
 
@@ -935,7 +935,7 @@ export default function ItemsPage() {
         ) : null}
       </div>
 
-      <div className="hidden rounded-2xl border border-border/70 bg-card/95 p-5 shadow-sm md:block">
+      <div className="hidden rounded-2xl border border-border/60 bg-card/95 p-5 shadow-sm md:block">
         <h2 className="text-base font-semibold tracking-tight">{t("items.bulk_title")}</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">{t("items.bulk_instruction")}</p>
 
@@ -948,9 +948,9 @@ export default function ItemsPage() {
           <p>{t("items.bulk_units_hint")}</p>
         </div>
 
-        <div className="mt-3 flex overflow-hidden rounded-xl border border-border/70 bg-background/85 text-sm shadow-sm">
+        <div className="mt-3 flex overflow-hidden rounded-xl border border-border/60 bg-background/80 text-sm shadow-sm">
           <div
-            className="w-14 select-none border-r border-border/70 bg-muted/30 px-2 py-2 font-mono text-xs text-muted-foreground"
+            className="w-14 select-none border-r border-border/60 bg-muted/30 px-2 py-2 font-mono text-xs text-muted-foreground"
             style={{ height: bulkEditorHeight }}
           >
             {uploadLineNumbers.map((lineNumber) => (
@@ -1036,7 +1036,7 @@ export default function ItemsPage() {
         ) : null}
 
         {bulkResult ? (
-          <div className="mt-3 rounded-xl border border-border/70 bg-muted/40 p-3 text-sm shadow-sm">
+          <div className="mt-3 rounded-xl border border-border/60 bg-muted/40 p-3 text-sm shadow-sm">
             <p>
               {bulkResult.dry_run ? t("items.bulk_result_check") : t("items.bulk_result_upload")}: {t("items.bulk_total_lines")}={parsedBulk.totalLines},
               {t("items.bulk_valid_lines")}={parsedBulk.rows.length}, {t("items.bulk_result_new")}={bulkResult.created}, {t("items.bulk_result_existing")}=
@@ -1047,7 +1047,7 @@ export default function ItemsPage() {
         ) : null}
       </div>
 
-      <div className="rounded-2xl border border-border/70 bg-card/95 p-5 shadow-sm">
+      <div className="rounded-2xl border border-border/60 bg-card/95 p-5 shadow-sm">
         <h2 className="text-base font-semibold tracking-tight">{t("items.catalog_title")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {t("items.catalog_total")}:{" "}
@@ -1122,7 +1122,7 @@ export default function ItemsPage() {
           {/* ── Desktop table (md+) ── */}
           <table className="hidden min-w-full text-sm md:table">
             <thead className="sticky top-0 z-10">
-              <tr className="border-b border-border/70 bg-muted text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <tr className="border-b border-border/60 bg-muted/80 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                 <th className="px-2 py-2">{t("items.col_num")}</th>
                 <th className="px-2 py-2">{t("items.col_code")}</th>
                 <th className="px-2 py-2">{t("items.col_name")}</th>

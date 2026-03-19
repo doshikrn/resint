@@ -74,16 +74,16 @@ export function ReportItemsDesktopTable({
   return (
     <div
       ref={scrollRef}
-      className="hidden sm:block overflow-auto rounded-xl border border-border/70 max-h-[60dvh] lg:max-h-none lg:flex-1 lg:min-h-0"
+      className="hidden sm:block overflow-auto rounded-xl border border-border/60 max-h-[60dvh] lg:max-h-none lg:flex-1 lg:min-h-0"
     >
       <div className="min-w-[600px]">
         {/* header */}
-        <div className="sticky top-0 z-10 grid grid-cols-[minmax(120px,1fr)_80px_140px_130px_160px] gap-0 border-b border-border/70 bg-muted/95 text-left text-xs font-semibold uppercase tracking-[0.08em] text-foreground/80 backdrop-blur-sm">
-          <div className="px-3 py-3">{t("inventory.reports.col_item")}</div>
-          <div className="px-3 py-3">{t("inventory.reports.col_total")}</div>
-          <div className="px-3 py-3">{t("inventory.reports.col_last_editor")}</div>
-          <div className="px-3 py-3">{t("inventory.reports.col_when")}</div>
-          <div className="px-3 py-3">{t("inventory.reports.col_action")}</div>
+        <div className="sticky top-0 z-10 grid grid-cols-[minmax(120px,1fr)_80px_140px_130px_160px] gap-0 border-b border-border/60 bg-muted/80 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground backdrop-blur-sm">
+          <div className="px-3 py-2.5">{t("inventory.reports.col_item")}</div>
+          <div className="px-3 py-2.5">{t("inventory.reports.col_total")}</div>
+          <div className="px-3 py-2.5">{t("inventory.reports.col_last_editor")}</div>
+          <div className="px-3 py-2.5">{t("inventory.reports.col_when")}</div>
+          <div className="px-3 py-2.5">{t("inventory.reports.col_action")}</div>
         </div>
         {/* body */}
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -102,16 +102,16 @@ export function ReportItemsDesktopTable({
                   width: "100%",
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
-                className={`grid grid-cols-[minmax(120px,1fr)_80px_140px_130px_160px] gap-0 border-b border-border/60 text-sm hover:bg-muted/20 ${isSelected ? "bg-primary/5" : ""}`}
+                className={`grid grid-cols-[minmax(120px,1fr)_80px_140px_130px_160px] gap-0 border-b border-border/40 text-sm transition-colors hover:bg-muted/30 cursor-pointer ${isSelected ? "bg-primary/5" : ""}`}
                 onClick={() => onSelectItem(entry.item_id)}
               >
-                <div className="px-3 py-3 font-medium truncate">{entry.item_name}</div>
-                <div className="px-3 py-3 tabular-nums">
+                <div className="px-3 py-2.5 font-medium truncate">{entry.item_name}</div>
+                <div className="px-3 py-2.5 tabular-nums">
                   {formatQuantityWithUnit(entry.quantity, entry.unit)}
                 </div>
-                <div className="px-3 py-3 truncate">{actorDisplayName ?? "—"}</div>
-                <div className="px-3 py-3">{fmtDate(lastActionAt)}</div>
-                <div className="px-3 py-3">
+                <div className="px-3 py-2.5 truncate text-muted-foreground">{actorDisplayName ?? "—"}</div>
+                <div className="px-3 py-2.5 text-muted-foreground">{fmtDate(lastActionAt)}</div>
+                <div className="px-3 py-2.5">
                   <div className="flex gap-1">
                     <Button
                       type="button"
@@ -209,19 +209,23 @@ export function ReportItemsMobileList({
                 width: "100%",
                 transform: `translateY(${virtualRow.start}px)`,
               }}
-              className="pb-2"
+              className="pb-1.5"
             >
               <div
-                className={`rounded-xl border border-border/70 p-3 ${isSelected ? "bg-primary/5" : ""}`}
+                className={`rounded-xl border p-3 transition-colors ${isSelected ? "border-primary/50 bg-primary/5" : "border-border/50 active:bg-muted/30"}`}
                 onClick={() => onSelectItem(entry.item_id)}
               >
-                <p className="text-sm font-semibold">{entry.item_name}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formatQuantityWithUnit(entry.quantity, entry.unit)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t("inventory.reports.col_last_editor")}: {actorDisplayName ?? "—"}
-                </p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold truncate">{entry.item_name}</p>
+                  <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">
+                    {formatQuantityWithUnit(entry.quantity, entry.unit)}
+                  </p>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                  <span>{actorDisplayName ?? "—"}</span>
+                  <span className="text-border">·</span>
+                  <span>{fmtDate(lastActionAt)}</span>
+                </div>
                 {contributorsCount > 1 ? (
                   <p className="text-xs text-muted-foreground">
                     Добавляли: {contributorsPreview.join(", ")}
@@ -233,11 +237,11 @@ export function ReportItemsMobileList({
                 <p className="text-xs text-muted-foreground">
                   {t("inventory.reports.col_when")}: {fmtDate(lastActionAt)}
                 </p>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex gap-1.5">
                   <Button
                     type="button"
                     variant="secondary"
-                    className="h-9 flex-1 rounded-lg"
+                    className="h-8 flex-1 rounded-lg text-xs"
                     disabled={
                       (selectedReportSession.is_closed && !canEditClosedRevision) ||
                       editEntryMutationPending
@@ -253,7 +257,7 @@ export function ReportItemsMobileList({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 shrink-0 rounded-lg text-destructive hover:text-destructive"
+                    className="h-8 w-8 shrink-0 rounded-lg text-destructive hover:text-destructive"
                     disabled={
                       (selectedReportSession.is_closed && !canEditClosedRevision) ||
                       deleteEntryMutationPending

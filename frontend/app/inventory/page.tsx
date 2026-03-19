@@ -649,7 +649,7 @@ export default function InventoryPage() {
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-4 lg:px-5 md:flex md:flex-1 md:min-h-0 md:flex-col">
-      <section className="min-w-0 w-full space-y-3 rounded-3xl border border-border/60 bg-card/65 p-2.5 pb-[calc(9rem+env(safe-area-inset-bottom))] shadow-sm md:flex md:flex-1 md:min-h-0 md:flex-col md:gap-4 md:space-y-0 md:p-3 md:pb-0">
+      <section className="min-w-0 w-full space-y-2.5 rounded-2xl border border-border/60 bg-card/60 p-2 pb-[calc(9rem+env(safe-area-inset-bottom))] shadow-sm md:flex md:flex-1 md:min-h-0 md:flex-col md:gap-3 md:space-y-0 md:p-3 md:pb-0">
         {inlineErrorMessage ? (
           <div className="rounded-xl border border-amber-300/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-800 shadow-sm">
             <p>{inlineErrorMessage}</p>
@@ -666,38 +666,38 @@ export default function InventoryPage() {
         ) : null}
 
         {/* ── Tab bar ── */}
-        <div className="rounded-xl border border-border/70 bg-background/75 p-1 shadow-sm md:shrink-0">
+        <div className="rounded-xl border border-border/60 bg-muted/40 p-1 md:shrink-0">
           <div
-            className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center"
+            className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-0"
             onTouchStart={handleTabTouchStart}
             onTouchMove={handleTabTouchMove}
           >
             <Button
               type="button"
               variant={inventoryView === "revision" ? "default" : "ghost"}
-              className="h-auto min-h-10 w-full whitespace-normal rounded-lg px-3 py-2 text-xs leading-tight sm:h-9 sm:w-auto sm:py-0 sm:text-sm"
+              className="h-9 w-full whitespace-normal rounded-lg px-3 text-xs font-medium sm:w-auto sm:text-sm"
               onClick={() => switchTab("revision")}
             >
               {t("inventory.tab.revision")}
             </Button>
             {canManageRevision ? (
               <>
-                <div className="my-1 h-px w-full bg-border sm:my-0 sm:mx-2 sm:h-6 sm:w-px" aria-hidden="true" />
+                <div className="hidden sm:mx-1 sm:block sm:h-5 sm:w-px sm:bg-border/60" aria-hidden="true" />
                 <Button
                   type="button"
                   variant={inventoryView === "management" ? "default" : "ghost"}
-                  className="h-auto min-h-10 w-full whitespace-normal rounded-lg px-3 py-2 text-xs leading-tight sm:h-9 sm:w-auto sm:py-0 sm:text-sm"
+                  className="h-9 w-full whitespace-normal rounded-lg px-3 text-xs font-medium sm:w-auto sm:text-sm"
                   onClick={() => switchTab("management")}
                 >
                   {t("inventory.tab.management")}
                 </Button>
               </>
             ) : null}
-            <div className="my-1 h-px w-full bg-border sm:my-0 sm:mx-2 sm:h-6 sm:w-px" aria-hidden="true" />
+            <div className="hidden sm:mx-1 sm:block sm:h-5 sm:w-px sm:bg-border/60" aria-hidden="true" />
             <Button
               type="button"
               variant={inventoryView === "reports" ? "default" : "ghost"}
-              className="h-auto min-h-10 w-full whitespace-normal rounded-lg px-3 py-2 text-xs leading-tight sm:h-9 sm:w-auto sm:py-0 sm:text-sm"
+              className="h-9 w-full whitespace-normal rounded-lg px-3 text-xs font-medium sm:w-auto sm:text-sm"
               onClick={() => switchTab("reports")}
             >
               {t("inventory.tab.reports")}
@@ -738,8 +738,8 @@ export default function InventoryPage() {
         {/* ── Main content area ── */}
         {showManagementView ? (
           <div className="grid min-w-0 w-full gap-3 md:flex-1 md:min-h-0 md:overflow-y-auto">
-            <div className="h-full min-h-0 flex flex-col gap-6">
-              <div className="space-y-6 rounded-2xl border border-border/70 bg-card/95 p-6 shadow-sm md:p-7">
+            <div className="h-full min-h-0 flex flex-col gap-4">
+              <div className="space-y-4 rounded-2xl border border-border/60 bg-card/95 p-5 shadow-sm md:p-6">
                 <div className="space-y-3">
                   <button
                     type="button"
@@ -748,8 +748,8 @@ export default function InventoryPage() {
                   >
                     {t("common.back")}
                   </button>
-                  <h3 className="text-xl font-semibold leading-tight">{t("inventory.manage.title")}</h3>
-                  <div className="rounded-xl border border-dashed bg-muted/40 px-4 py-3">
+                  <h3 className="text-lg font-semibold leading-tight">{t("inventory.manage.title")}</h3>
+                  <div className="rounded-xl border border-dashed border-border/50 bg-muted/30 px-4 py-3">
                     <p className="text-sm text-muted-foreground">
                       {session && !isClosed
                         ? `${t("inventory.manage.active")} (#${session.revision_no})`
@@ -758,7 +758,7 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-3 border-t pt-4">
+                <div className="flex flex-wrap gap-2.5 border-t border-border/50 pt-4">
                   <Button
                     type="button"
                     variant={session && !isClosed ? "destructive" : "default"}
@@ -779,7 +779,7 @@ export default function InventoryPage() {
                 </div>
 
                 {isClosed ? (
-                  <div className="rounded-xl border border-dashed bg-muted/40 px-4 py-3">
+                  <div className="rounded-xl border border-dashed border-border/50 bg-muted/30 px-4 py-3">
                     <p className="text-sm text-muted-foreground">{t("inventory.manage.closed_hint")}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {canEditClosedRevision && session ? (
@@ -811,8 +811,8 @@ export default function InventoryPage() {
               </div>
 
               {/* ── Compact recent revisions ── */}
-              <div className="space-y-3 rounded-2xl border border-border/70 bg-card/95 p-5 shadow-sm md:p-6">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="space-y-3 rounded-2xl border border-border/60 bg-card/95 p-4 shadow-sm md:p-5">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   {t("inventory.manage.history_title")}
                 </h3>
                 {sessionsHistoryQuery.isLoading ? (
@@ -821,36 +821,36 @@ export default function InventoryPage() {
                 {!sessionsHistoryQuery.isLoading && revisionHistory.filter((r) => r.is_closed).length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t("inventory.manage.no_history")}</p>
                 ) : null}
-                <div className="divide-y divide-border/60">
+                <div className="divide-y divide-border/50">
                   {revisionHistory
                     .filter((r) => r.is_closed)
                     .slice(0, 5)
                     .map((row) => {
                       const warehouseName = resolveWarehouseName(row.warehouse_id);
                       return (
-                        <div key={row.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                        <div key={row.id} className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-medium leading-tight">
                               #{row.revision_no}{warehouseName ? ` · ${warehouseName}` : ""}
                               {" · "}
                               <span className="text-muted-foreground font-normal">{row.items_count} {t("inventory.manage.items_short")}</span>
                             </p>
-                            <p className="text-xs text-muted-foreground">{row.updated_at ? formatDateTime(row.updated_at) : "—"}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">{row.updated_at ? formatDateTime(row.updated_at) : "—"}</p>
                           </div>
-                          <div className="flex shrink-0 gap-1.5">
-                            <Button type="button" variant="ghost" className="h-7 rounded-md px-2.5 text-xs"
+                          <div className="flex shrink-0 gap-1">
+                            <Button type="button" variant="ghost" className="h-8 rounded-lg px-2.5 text-xs"
                               onClick={() => { setSelectedReportSessionId(row.id); setInventoryView("reports"); }}>
                               {t("inventory.manage.open_report")}
                             </Button>
                             {canEditClosedRevision && row.is_closed ? (
-                              <Button type="button" variant="ghost" className="h-7 rounded-md px-2.5 text-xs"
+                              <Button type="button" variant="ghost" className="h-8 rounded-lg px-2.5 text-xs"
                                 disabled={reopenSessionMutation.isPending}
                                 onClick={() => reopenSessionMutation.mutate(row.id)}>
                                 {reopenSessionMutation.isPending ? t("inventory.manage.reopening") : t("inventory.manage.reopen")}
                               </Button>
                             ) : null}
                             {canDeleteRevision ? (
-                              <Button type="button" variant="ghost" className="h-7 rounded-md px-2.5 text-xs text-destructive hover:text-destructive"
+                              <Button type="button" variant="ghost" className="h-8 rounded-lg px-2.5 text-xs text-destructive hover:text-destructive"
                                 disabled={deleteSessionMutation.isPending}
                                 onClick={() => setDeleteConfirmSessionId(row.id)}>
                                 {t("inventory.manage.delete")}
@@ -865,11 +865,11 @@ export default function InventoryPage() {
             </div>
           </div>
         ) : showReportsView ? (
-          <div className="grid min-w-0 w-full gap-3 md:flex-1 md:min-h-0">
-            <div className="h-full min-h-0 flex flex-1 flex-col gap-6 overflow-hidden">
-              <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-[minmax(240px,0.9fr)_minmax(0,1.6fr)] lg:flex-1 lg:min-h-0">
-                <div className="min-w-0 space-y-3 rounded-2xl border border-border/70 bg-card/95 p-3 shadow-sm max-h-[50dvh] overflow-y-auto sm:p-4 lg:max-h-none lg:min-h-0">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          <div className="grid min-w-0 w-full gap-2.5 md:flex-1 md:min-h-0">
+            <div className="h-full min-h-0 flex flex-1 flex-col gap-4 overflow-hidden">
+              <div className="grid min-w-0 gap-2.5 sm:gap-3 lg:grid-cols-[minmax(220px,0.85fr)_minmax(0,1.6fr)] lg:flex-1 lg:min-h-0">
+                <div className="min-w-0 space-y-2 rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm max-h-[45dvh] overflow-y-auto sm:p-4 lg:max-h-none lg:min-h-0">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                     {t("inventory.reports.history_title")}
                   </h3>
                   {sessionsHistoryQuery.isLoading ? <p className="text-sm text-muted-foreground">{t("inventory.reports.loading_sessions")}</p> : null}
@@ -877,33 +877,38 @@ export default function InventoryPage() {
                   {!sessionsHistoryQuery.isLoading && !sessionsHistoryQuery.isError && revisionHistory.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{t("inventory.reports.no_sessions")}</p>
                   ) : null}
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {revisionHistory.map((row) => {
                       const selected = row.id === reportSessionId;
                       const statusLabel = row.is_closed ? t("inventory.session.closed") : t("inventory.session.active");
                       return (
                         <button key={row.id} type="button" onClick={() => setSelectedReportSessionId(row.id)}
-                          className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${selected ? "border-primary bg-primary/5" : "border-border/70 hover:bg-muted/40"}`}>
-                          <p className="text-base font-semibold">{t("inventory.reports.revision_number")} #{row.revision_no}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">{t("inventory.reports.status")}: {statusLabel}</p>
-                          <p className="text-sm text-muted-foreground">{t("inventory.reports.items_counted")}: {row.items_count}</p>
-                          <p className="text-sm text-muted-foreground">{t("inventory.reports.last_change")}: {row.updated_at ? formatDateTime(row.updated_at) : "—"}</p>
+                          className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${selected ? "border-primary/60 bg-primary/5 shadow-sm" : "border-border/50 hover:bg-muted/40"}`}>
+                          <div className="flex items-baseline justify-between gap-2">
+                            <p className="text-sm font-semibold">#{row.revision_no}</p>
+                            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${row.is_closed ? "bg-emerald-500/15 text-emerald-700" : "bg-amber-500/15 text-amber-700"}`}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {row.items_count} {t("inventory.manage.items_short")} · {row.updated_at ? formatDateTime(row.updated_at) : "—"}
+                          </p>
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                <div className="min-w-0 space-y-3 overflow-hidden rounded-2xl border border-border/70 bg-card/95 p-3 shadow-sm sm:space-y-4 sm:p-5 lg:flex lg:flex-col lg:gap-4 lg:space-y-0 lg:min-h-0">
+                <div className="min-w-0 space-y-2.5 overflow-hidden rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm sm:space-y-3 sm:p-4 lg:flex lg:flex-col lg:gap-3 lg:space-y-0 lg:min-h-0">
                   <div className="flex flex-col items-stretch justify-between gap-2 sm:flex-row sm:items-center sm:gap-3 lg:shrink-0">
                     <div className="min-w-0">
-                      <h3 className="text-base font-semibold tracking-tight sm:text-lg">
+                      <h3 className="text-sm font-semibold tracking-tight sm:text-base">
                         {selectedReportSession
                           ? `${t("inventory.reports.revision_number")} #${selectedReportSession.revision_no}${reportWarehouseName ? ` (${reportWarehouseName})` : ""}`
                           : t("inventory.tab.reports")}
                       </h3>
                       {selectedReportSession ? (
-                        <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-sm font-medium ${selectedReportSession.is_closed ? "bg-emerald-500/15 text-emerald-700" : "bg-amber-500/15 text-amber-700"}`}>
+                        <span className={`mt-0.5 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${selectedReportSession.is_closed ? "bg-emerald-500/15 text-emerald-700" : "bg-amber-500/15 text-amber-700"}`}>
                           {selectedReportSession.is_closed ? t("inventory.session.closed") : t("inventory.session.active")}
                         </span>
                       ) : null}
@@ -954,12 +959,12 @@ export default function InventoryPage() {
                   ) : null}
 
                   {selectedReportSession ? (
-                    <div className="flex w-full flex-wrap gap-1 rounded-xl border border-border/70 bg-background/70 p-1 sm:inline-flex sm:flex-nowrap lg:w-auto lg:shrink-0">
-                      <Button type="button" variant={reportsPanelTab === "items" ? "default" : "ghost"} className="h-9 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 text-xs font-medium sm:h-10 sm:basis-auto sm:px-3 sm:text-sm lg:flex-none" onClick={() => setReportsPanelTab("items")}>{t("inventory.reports.tab_items")}</Button>
-                      <Button type="button" variant={reportsPanelTab === "people" ? "default" : "ghost"} className="h-9 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 text-xs font-medium sm:h-10 sm:basis-auto sm:px-3 sm:text-sm lg:flex-none" onClick={() => setReportsPanelTab("people")}>{t("inventory.reports.tab_people")}</Button>
-                      <Button type="button" variant={reportsPanelTab === "history" ? "default" : "ghost"} className="h-9 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 text-xs font-medium sm:h-10 sm:basis-auto sm:px-3 sm:text-sm lg:flex-none" onClick={() => setReportsPanelTab("history")}>{t("inventory.reports.tab_history")}</Button>
+                    <div className="flex w-full flex-wrap gap-0.5 rounded-xl border border-border/60 bg-muted/40 p-0.5 sm:inline-flex sm:flex-nowrap lg:w-auto lg:shrink-0">
+                      <Button type="button" variant={reportsPanelTab === "items" ? "default" : "ghost"} className="h-8 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 text-xs font-medium sm:h-9 sm:basis-auto sm:px-3 sm:text-sm lg:flex-none" onClick={() => setReportsPanelTab("items")}>{t("inventory.reports.tab_items")}</Button>
+                      <Button type="button" variant={reportsPanelTab === "people" ? "default" : "ghost"} className="h-8 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 text-xs font-medium sm:h-9 sm:basis-auto sm:px-3 sm:text-sm lg:flex-none" onClick={() => setReportsPanelTab("people")}>{t("inventory.reports.tab_people")}</Button>
+                      <Button type="button" variant={reportsPanelTab === "history" ? "default" : "ghost"} className="h-8 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 text-xs font-medium sm:h-9 sm:basis-auto sm:px-3 sm:text-sm lg:flex-none" onClick={() => setReportsPanelTab("history")}>{t("inventory.reports.tab_history")}</Button>
                       {userCanViewAudit ? (
-                        <Button type="button" variant={reportsPanelTab === "audit" ? "default" : "ghost"} className="h-9 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 text-xs font-medium sm:h-10 sm:basis-auto sm:px-3 sm:text-sm lg:flex-none" onClick={() => setReportsPanelTab("audit")}>Журнал</Button>
+                        <Button type="button" variant={reportsPanelTab === "audit" ? "default" : "ghost"} className="h-8 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 text-xs font-medium sm:h-9 sm:basis-auto sm:px-3 sm:text-sm lg:flex-none" onClick={() => setReportsPanelTab("audit")}>Журнал</Button>
                       ) : null}
                     </div>
                   ) : null}
@@ -1000,8 +1005,8 @@ export default function InventoryPage() {
                             deleteEntryMutationPending={deleteEntryMutation.isPending}
                           />
                           {selectedReportItemId ? (
-                            <div className="space-y-4 rounded-xl border border-border/70 p-3 sm:p-4 lg:shrink-0 lg:max-h-48 lg:overflow-y-auto">
-                              <h4 className="text-base font-semibold">{t("inventory.reports.item_details")}</h4>
+                            <div className="space-y-3 rounded-xl border border-border/50 bg-background/60 p-3 sm:p-4 lg:shrink-0 lg:max-h-48 lg:overflow-y-auto">
+                              <h4 className="text-sm font-semibold">{t("inventory.reports.item_details")}</h4>
                               {reportItemContributorsQuery.isLoading ? <p className="text-sm text-muted-foreground">{t("inventory.reports.loading_details")}</p> : null}
                               {reportItemContributorsQuery.isError ? <p className="text-sm text-destructive">{t("inventory.reports.error_details")}</p> : null}
                               {itemContributors ? (
@@ -1047,17 +1052,17 @@ export default function InventoryPage() {
                   ) : null}
 
                   {reportsPanelTab === "people" && selectedReportSession ? (
-                    <div className="max-h-[60dvh] space-y-4 overflow-y-auto overflow-x-hidden lg:max-h-none lg:flex-1 lg:min-h-0">
+                    <div className="max-h-[60dvh] space-y-3 overflow-y-auto overflow-x-hidden lg:max-h-none lg:flex-1 lg:min-h-0">
                       {participantsQuery.isLoading ? <p className="text-sm text-muted-foreground">{t("inventory.reports.loading_people")}</p> : null}
                       {participantsQuery.isError ? <p className="text-sm text-destructive">{t("inventory.reports.error_people")}</p> : null}
                       {participantsSummary ? (
                         <>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs font-medium text-muted-foreground">
                             {t("inventory.reports.col_employee")}: {participantsSummary.participants.length}
                           </p>
-                          <div className="space-y-2">
+                          <div className="space-y-1.5">
                             {participantsSummary.participants.map((row) => (
-                              <div key={row.actor_user_id} className="flex items-start justify-between rounded-xl border border-border/60 px-3 py-2">
+                              <div key={row.actor_user_id} className="flex items-start justify-between rounded-xl border border-border/50 bg-background/60 px-3 py-2">
                                 <div className="min-w-0">
                                   <p className="text-sm font-medium">{row.actor_display_name}</p>
                                   <p className="text-xs text-muted-foreground">
@@ -1074,14 +1079,14 @@ export default function InventoryPage() {
                   ) : null}
 
                   {reportsPanelTab === "history" && selectedReportSession ? (
-                    <div className="max-h-[60dvh] space-y-2 overflow-y-auto overflow-x-hidden lg:max-h-none lg:flex-1 lg:min-h-0">
+                    <div className="max-h-[60dvh] space-y-1.5 overflow-y-auto overflow-x-hidden lg:max-h-none lg:flex-1 lg:min-h-0">
                       {reportAuditQuery.isLoading ? <p className="text-sm text-muted-foreground">{t("inventory.reports.loading_history")}</p> : null}
                       {reportAuditQuery.isError ? <p className="text-sm text-destructive">{t("inventory.reports.error_history")}</p> : null}
                       {(reportAuditQuery.data ?? []).length === 0 && !reportAuditQuery.isLoading ? (
                         <p className="text-sm text-muted-foreground">{t("inventory.reports.no_changes")}</p>
                       ) : null}
                       {(reportAuditQuery.data ?? []).map((event) => (
-                        <div key={event.id} className="rounded-xl border border-border/60 px-3 py-2">
+                        <div key={event.id} className="rounded-xl border border-border/50 bg-background/60 px-3 py-2">
                           <p className="text-sm">
                             <span className="font-medium">{event.actor_display_name ?? event.actor_username}</span>
                             {" "}
@@ -1089,7 +1094,7 @@ export default function InventoryPage() {
                             {" · "}
                             <span className="text-muted-foreground">{event.item_name}</span>
                           </p>
-                          <p className="text-xs text-muted-foreground">{formatDateTime(event.created_at)}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(event.created_at)}</p>
                         </div>
                       ))}
                     </div>
@@ -1133,7 +1138,7 @@ export default function InventoryPage() {
 
         {/* ── Toast ── */}
         {toastMessage ? (
-          <div className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] inset-x-4 sm:inset-x-auto sm:right-6 sm:left-auto max-w-sm mx-auto sm:mx-0 rounded-md bg-foreground px-4 py-2 text-sm text-background shadow-lg">
+          <div className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] inset-x-4 sm:inset-x-auto sm:right-6 sm:left-auto max-w-sm mx-auto sm:mx-0 rounded-xl bg-foreground px-4 py-2.5 text-sm text-background shadow-lg">
             {toastMessage}
           </div>
         ) : null}
@@ -1142,7 +1147,7 @@ export default function InventoryPage() {
         {editEntryState ? (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
             <form
-              className="w-full max-w-md rounded-lg border bg-card p-4 shadow-lg"
+              className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-5 shadow-xl"
               onSubmit={(event) => {
                 event.preventDefault();
                 void submitEditEntry();

@@ -141,9 +141,9 @@ export function InventoryInputCard({
   const { t } = useLanguage();
 
   return (
-    <section className="space-y-6 rounded-2xl border border-border/70 bg-card/95 p-4 shadow-sm transition-all duration-150 hover:shadow-md motion-reduce:transition-none sm:p-6 md:p-7">
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-card/95 p-4 shadow-sm sm:p-5 md:p-6">
       <div className="flex items-center justify-between">
-        <h2 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight md:text-xl">
+        <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight md:text-lg">
           <ClipboardList className="h-5 w-5 text-primary" /> {t("inventory.input.title")}
         </h2>
       </div>
@@ -156,7 +156,7 @@ export function InventoryInputCard({
               data-testid="inventory-search-input"
               ref={searchInputRef}
               placeholder={t("inventory.input.search_placeholder")}
-              className="h-12 rounded-2xl border border-border/70 bg-background/85 pl-11 pr-4 text-sm shadow-sm placeholder:text-muted-foreground/80 transition-all duration-150 focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none"
+              className="h-12 rounded-2xl border border-border/60 bg-background/80 pl-11 pr-4 text-sm shadow-sm placeholder:text-muted-foreground/70 transition-colors focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/30"
               value={searchTerm}
               disabled={!canSearch}
               onChange={onSearchChange}
