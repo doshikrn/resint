@@ -248,14 +248,20 @@ export function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
   const isLoginPage = pathname === "/login";
-  const { user: currentUser, isLoading: userIsLoading, is401 } = useCurrentUser();
+  const {
+    user: currentUser,
+    isLoading: userIsLoading,
+    is401,
+    isRecoverableError,
+    retryAuthCheck,
+  } = useCurrentUser();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [forceAuthMode, setForceAuthMode] = useState(false);
   const [authTimedOut, setAuthTimedOut] = useState(false);
 
-  // Safety timeout: if auth check hasn't completed in 10s, treat as unauthenticated
-  // to prevent infinite "Проверяем аккаунт..." on mobile with flaky networks.
+  // Safety timeout: if auth check has not completed in time, switch to a
+  // recoverable fallback instead of keeping the shell in endless loading.
   useEffect(() => {
     if (!userIsLoading) {
       setAuthTimedOut(false);
@@ -353,7 +359,19 @@ export function AppShell({ children }: AppShellProps) {
     window.location.replace("/login");
   }
 
-  if (profileLoaded && !currentUser && !is401 && !forceAuthMode) {
+  const showAuthRecovery =
+    !isLoginPage &&
+    !forceAuthMode &&
+    !currentUser &&
+    !is401 &&
+    (isRecoverableError || authTimedOut);
+
+  function handleRetryAuthCheck() {
+    setAuthTimedOut(false);
+    void retryAuthCheck();
+  }
+
+  if (showAuthRecovery) {
     return (
       <div className="min-h-[100dvh] bg-muted/35 p-4 md:p-8">
         <div
@@ -361,7 +379,15 @@ export function AppShell({ children }: AppShellProps) {
           aria-hidden="true"
         />
         <div className="relative mx-auto mt-20 max-w-md rounded-2xl border border-border/70 bg-card/95 p-6 text-center text-sm text-muted-foreground shadow-sm">
-          {t("common.checking_account")}
+          <p className="font-medium text-foreground">{t("auth.recovery_title")}</p>
+          <p className="mt-2 leading-relaxed text-muted-foreground">
+            {t("auth.recovery_hint")}
+          </p>
+          <div className="mt-4 flex justify-center gap-3">
+            <Button type="button" onClick={handleRetryAuthCheck}>
+              {t("common.retry")}
+            </Button>
+          </div>
         </div>
       </div>
     );

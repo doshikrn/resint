@@ -39,6 +39,8 @@ const ru = {
   "common.dismiss": "Убрать",
   "common.online_count": "онлайн",
   "common.online_title": "Пользователи онлайн",
+  "auth.recovery_title": "Не удалось проверить сессию",
+  "auth.recovery_hint": "Сеть недоступна или обновление сессии ещё не завершилось. Повторите попытку. Черновик и офлайн-очередь сохранены.",
 
   // ── Inventory tabs ──
   "inventory.tab.revision": "Ревизия",

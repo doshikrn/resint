@@ -41,6 +41,8 @@ const kk: Partial<Dictionary> = {
   "common.dismiss": "Жою",
   "common.online_count": "онлайн",
   "common.online_title": "Онлайн пайдаланушылар",
+  "auth.recovery_title": "Сессияны тексеру мүмкін болмады",
+  "auth.recovery_hint": "Желі қолжетімсіз немесе сессияны жаңарту әлі аяқталмады. Қайталап көріңіз. Черновик пен оффлайн кезек сақталады.",
 
   // ── Inventory tabs ──
   "inventory.tab.revision": "Түгендеу",

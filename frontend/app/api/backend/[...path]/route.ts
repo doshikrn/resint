@@ -32,6 +32,114 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
+type RefreshResult =
+  | {
+      kind: "success";
+      accessToken: string;
+      refreshToken: string;
+    }
+  | {
+      kind: "invalid";
+    }
+  | {
+      kind: "failed";
+      status: 502 | 504;
+      message: string;
+    };
+
+const inFlightRefreshes = new Map<string, Promise<RefreshResult>>();
+
+function setAccessCookie(response: NextResponse, value: string, maxAge: number) {
+  response.cookies.set(ACCESS_TOKEN_COOKIE, value, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+  });
+}
+
+function setRefreshCookie(response: NextResponse, value: string, maxAge: number) {
+  response.cookies.set(REFRESH_TOKEN_COOKIE, value, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+  });
+}
+
+function clearAuthCookies(response: NextResponse) {
+  setAccessCookie(response, "", 0);
+  setRefreshCookie(response, "", 0);
+}
+
+function createUnauthorizedResponse() {
+  const unauthorized = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  clearAuthCookies(unauthorized);
+  return unauthorized;
+}
+
+async function executeRefresh(rawRefreshToken: string): Promise<RefreshResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BACKEND_REQUEST_TIMEOUT_MS);
+  let refreshResponse: Response;
+  try {
+    refreshResponse = await fetch(makeApiUrl(API_ROUTES.auth.refresh), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refresh_token: rawRefreshToken }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const status = error instanceof DOMException && error.name === "AbortError" ? 504 : 502;
+    const message = status === 504 ? "Session refresh timeout" : "Session refresh failed";
+    return { kind: "failed", status, message };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!refreshResponse.ok) {
+    if ([400, 401, 403].includes(refreshResponse.status)) {
+      return { kind: "invalid" };
+    }
+    return {
+      kind: "failed",
+      status: refreshResponse.status === 504 ? 504 : 502,
+      message: "Session refresh failed",
+    };
+  }
+
+  const refreshed = (await refreshResponse.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+  };
+
+  if (!refreshed.access_token || !refreshed.refresh_token) {
+    return { kind: "failed", status: 502, message: "Session refresh failed" };
+  }
+
+  return {
+    kind: "success",
+    accessToken: refreshed.access_token,
+    refreshToken: refreshed.refresh_token,
+  };
+}
+
+async function tryRefresh(rawRefreshToken: string): Promise<RefreshResult> {
+  const existing = inFlightRefreshes.get(rawRefreshToken);
+  if (existing) {
+    return existing;
+  }
+
+  const refreshPromise = executeRefresh(rawRefreshToken).finally(() => {
+    inFlightRefreshes.delete(rawRefreshToken);
+  });
+
+  inFlightRefreshes.set(rawRefreshToken, refreshPromise);
+  return refreshPromise;
+}
+
 async function forward(request: NextRequest, path: string[]) {
   if (!API_BASE_URL) {
     return NextResponse.json(
@@ -90,69 +198,25 @@ async function forward(request: NextRequest, path: string[]) {
     }
   };
 
-  const tryRefresh = async (rawRefreshToken: string) => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), BACKEND_REQUEST_TIMEOUT_MS);
-    let refreshResponse: Response;
-    try {
-      refreshResponse = await fetch(makeApiUrl(API_ROUTES.auth.refresh), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ refresh_token: rawRefreshToken }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    if (!refreshResponse.ok) {
-      return null;
-    }
-
-    const refreshed = (await refreshResponse.json()) as {
-      access_token?: string;
-      refresh_token?: string;
-    };
-
-    if (!refreshed.access_token || !refreshed.refresh_token) {
-      return null;
-    }
-
-    return refreshed;
-  };
-
   let nextAccessToken: string | null = null;
   let nextRefreshToken: string | null = null;
 
   if (!token && refreshToken) {
-    try {
-      const refreshed = await tryRefresh(refreshToken);
-      if (refreshed) {
-        token = refreshed.access_token ?? null;
-        refreshToken = refreshed.refresh_token ?? null;
-        nextAccessToken = refreshed.access_token ?? null;
-        nextRefreshToken = refreshed.refresh_token ?? null;
-      }
-    } catch {}
+    const refreshed = await tryRefresh(refreshToken);
+    if (refreshed.kind === "success") {
+      token = refreshed.accessToken;
+      refreshToken = refreshed.refreshToken;
+      nextAccessToken = refreshed.accessToken;
+      nextRefreshToken = refreshed.refreshToken;
+    } else if (refreshed.kind === "invalid") {
+      return createUnauthorizedResponse();
+    } else {
+      return NextResponse.json({ error: refreshed.message }, { status: refreshed.status });
+    }
   }
 
   if (!token) {
-    const unauthorized = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    unauthorized.cookies.set(ACCESS_TOKEN_COOKIE, "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 0,
-    });
-    unauthorized.cookies.set(REFRESH_TOKEN_COOKIE, "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 0,
-    });
-    return unauthorized;
+    return createUnauthorizedResponse();
   }
 
   let backendResponse: Response;
@@ -170,25 +234,27 @@ async function forward(request: NextRequest, path: string[]) {
   }
 
   if (backendResponse.status === 401 && refreshToken) {
-    try {
-      const refreshed = await tryRefresh(refreshToken);
-      if (refreshed?.access_token && refreshed.refresh_token) {
-        nextAccessToken = refreshed.access_token;
-        nextRefreshToken = refreshed.refresh_token;
-        try {
-          backendResponse = await sendToBackend(refreshed.access_token);
-        } catch (error) {
-          const message =
-            error instanceof DOMException && error.name === "AbortError"
-              ? "Backend request timeout"
-              : "Backend request failed";
-          return NextResponse.json(
-            { error: message },
-            { status: message.includes("timeout") ? 504 : 502 },
-          );
-        }
+    const refreshed = await tryRefresh(refreshToken);
+    if (refreshed.kind === "success") {
+      nextAccessToken = refreshed.accessToken;
+      nextRefreshToken = refreshed.refreshToken;
+      try {
+        backendResponse = await sendToBackend(refreshed.accessToken);
+      } catch (error) {
+        const message =
+          error instanceof DOMException && error.name === "AbortError"
+            ? "Backend request timeout"
+            : "Backend request failed";
+        return NextResponse.json(
+          { error: message },
+          { status: message.includes("timeout") ? 504 : 502 },
+        );
       }
-    } catch {}
+    } else if (refreshed.kind === "invalid") {
+      return createUnauthorizedResponse();
+    } else {
+      return NextResponse.json({ error: refreshed.message }, { status: refreshed.status });
+    }
   }
 
   const responseHeaders = new Headers();
@@ -204,37 +270,12 @@ async function forward(request: NextRequest, path: string[]) {
   });
 
   if (nextAccessToken && nextRefreshToken) {
-    response.cookies.set(ACCESS_TOKEN_COOKIE, nextAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 12,
-    });
-    response.cookies.set(REFRESH_TOKEN_COOKIE, nextRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 14,
-    });
+    setAccessCookie(response, nextAccessToken, 60 * 60 * 12);
+    setRefreshCookie(response, nextRefreshToken, 60 * 60 * 24 * 14);
   }
 
   if (backendResponse.status === 401) {
-    response.cookies.set(ACCESS_TOKEN_COOKIE, "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 0,
-    });
-    response.cookies.set(REFRESH_TOKEN_COOKIE, "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 0,
-    });
+    clearAuthCookies(response);
   }
 
   return response;

@@ -6,15 +6,23 @@ export const CURRENT_USER_CACHE_KEY = "rr_current_user";
 
 export const CURRENT_USER_QUERY_KEY = ["current-user"] as const;
 
+function getErrorStatus(error: unknown): number {
+  return error && typeof error === "object" && "status" in error
+    ? ((error as { status: number }).status ?? 0)
+    : 0;
+}
+
 export function useCurrentUser() {
   const [cachedUser, setCachedUser] = useState<CurrentUserProfile | null>(null);
 
   const query = useQuery({
     queryKey: CURRENT_USER_QUERY_KEY,
     queryFn: () => getCurrentUser(3500),
-    retry: 1,
+    retry: (failureCount, error) => getErrorStatus(error) !== 401 && failureCount < 2,
+    retryDelay: (attemptIndex) => Math.min(1_000 * 2 ** attemptIndex, 5_000),
     staleTime: 5_000,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Seed from localStorage on mount (instant placeholder)
@@ -54,10 +62,7 @@ export function useCurrentUser() {
   // a later retry can still recover the session.
   useEffect(() => {
     if (!query.isError) return;
-    const status =
-      query.error && "status" in query.error
-        ? (query.error as { status: number }).status
-        : 0;
+    const status = getErrorStatus(query.error);
     if (status !== 401) {
       return;
     }
@@ -69,7 +74,16 @@ export function useCurrentUser() {
   }, [query.isError, query.error]);
 
   const user = query.data ?? cachedUser;
-  const is401 = query.error && "status" in query.error && (query.error as { status: number }).status === 401;
+  const errorStatus = getErrorStatus(query.error);
+  const is401 = errorStatus === 401;
+  const isRecoverableError = query.isError && errorStatus !== 401;
 
-  return { user, isLoading: query.isLoading && !cachedUser, is401: Boolean(is401) };
+  return {
+    user,
+    isLoading: query.isLoading && !cachedUser,
+    is401: Boolean(is401),
+    isRecoverableError,
+    errorStatus,
+    retryAuthCheck: () => query.refetch(),
+  };
 }
