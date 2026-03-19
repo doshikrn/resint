@@ -40,7 +40,7 @@
 
 ### 2.2 Порядок источников
 
-- Если строка поиска непуста → backend search (`/items/search?q=...`).
+- Если строка поиска непуста → поиск выполняется по локальному in-memory индексу, построенному из полного каталога активной сессии (`GET /inventory/sessions/{id}/catalog`, ETag + IndexedDB cache).
 - Если строка поиска пуста → показывать «чипы» подсказок:
   1. Избранное
   2. Частые
@@ -63,7 +63,7 @@
 
 - Хранилище: `localStorage`
 - Ключ: версионированный (`inventory-fast-entry-draft-v1`).
-- Скоуп черновика: минимум `username + warehouse + zone`.
+- Скоуп черновика: `username + warehouse`.
 - Содержимое черновика:
   - `searchTerm` (string)
   - `selectedItem` (минимальный набор полей для восстановления выбора)
@@ -127,7 +127,7 @@
 - одна серверная запись идентифицируется по `entry.id`;
 - при успешной синхронизации offline queue item должен исчезнуть из очереди (и, следовательно, из pending-части журнала), чтобы не оставаться дублем относительно server recent.
 
-Допустимо кратковременное «двойное присутствие», если UI показывает pending, а сервер уже принял, но очередь ещё не обновилась. При следующем цикле sync это должно исчезнуть.
+Допустимо кратковременное «двойное присутствие», если UI показывает pending/synced queue item, а сервер уже принял запись. Источник истины для очистки дубля — recent-events: queue item удаляется только после подтверждения серверным `request_id`.
 
 ## 5) Units (единицы измерения)
 
@@ -148,6 +148,7 @@
 
 - При переходе в online запускается sync.
 - Пока очередь непуста — периодический sync (например, каждые ~12 секунд).
+- Перед sync клиент дополнительно делает health probe к backend; `navigator.onLine` сам по себе недостаточен.
 - Retry policy:
   - экспоненциальная задержка;
   - верхняя граница задержки.
@@ -173,7 +174,7 @@
 ## 8) Acceptance criteria (15–20)
 
 1. Фокус при открытии страницы ревизии находится в поле поиска.
-2. Ввод текста в поиск запускает backend search после debounce.
+2. Ввод текста в поиск запускает локальный поиск по in-memory индексу каталога после debounce.
 3. Поиск не выполняется, если строка после trim пуста.
 4. Максимум 20 результатов в dropdown.
 5. ArrowDown/ArrowUp меняют highlighted элемент в dropdown.
@@ -198,9 +199,16 @@
 ## Связанные файлы (ориентиры)
 
 - Экран ревизии: `frontend/app/inventory/page.tsx`
+- Компоновка fast-entry: `frontend/components/inventory/fast-entry-container.tsx`
 - Карточка ввода: `frontend/components/inventory/inventory-input-card.tsx`
+- Главный coordinator hook: `frontend/lib/hooks/use-fast-entry.ts`
+- Write-pipeline: `frontend/lib/hooks/use-entry-submit.ts`
+- Offline sync: `frontend/lib/hooks/use-offline-sync.ts`
+- Catalog cache/search: `frontend/lib/hooks/use-catalog-fetch.ts`
+- Draft restore: `frontend/lib/hooks/use-draft.ts`
+- Favorites / long-press: `frontend/lib/hooks/use-favorites.ts`
 - Прокси к бэку: `frontend/app/api/backend/[...path]/route.ts`
 - Логин: `frontend/app/api/auth/login/route.ts`
 - Offline queue storage: `frontend/lib/offline-entry-queue.ts`
 - Inventory API: `backend/app/routers/inventory.py`
-- Items search API: `backend/app/routers/items.py`
+- Items/catalog adjunct API: `backend/app/routers/items.py`

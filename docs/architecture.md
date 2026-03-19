@@ -1,7 +1,7 @@
-# RESINT — Full Architecture Snapshot
+# ZERE Restaurant / RESINT Codebase — Full Architecture Snapshot
 
 > **Назначение:** внешний архитектор / onboarding-документ.  
-> **Дата генерации:** автоматически из кодовой базы.
+> **Дата актуализации:** 2026-03-19.
 
 ---
 
@@ -55,7 +55,7 @@ inventory-app/
 │   ├── app/               # App Router pages
 │   ├── components/        # shared React components
 │   ├── lib/               # API client, hooks, i18n, offline utilities
-│   ├── public/brand/      # SVG logo assets
+│   ├── public/brand/      # PNG brand assets
 │   ├── middleware.ts       # auth guard
 │   ├── next.config.mjs
 │   └── package.json
@@ -95,7 +95,8 @@ WEB_CONCURRENCY, GUNICORN_TIMEOUT, EXPOSE_STACKTRACE
 **Env-переменные Frontend (build args):**
 ```
 NEXT_PUBLIC_APP_ENV, NEXT_PUBLIC_KITCHEN_WAREHOUSE_ID,
-NEXT_PUBLIC_BAR_WAREHOUSE_ID, NEXT_PUBLIC_BRAND_NAME
+NEXT_PUBLIC_BAR_WAREHOUSE_ID, NEXT_PUBLIC_BRAND_NAME,
+NEXT_PUBLIC_BRAND_LOGO_SRC
 ```
 > На сервере: `NEXT_PUBLIC_KITCHEN_WAREHOUSE_ID=2`, `NEXT_PUBLIC_BAR_WAREHOUSE_ID=3`
 
@@ -138,7 +139,7 @@ OpenAPI: `BearerAuth` (JWT) зарегистрирован как `securitySchem
 #### `/auth`
 | Метод | Путь | Описание |
 |-------|------|----------|
-| POST | `/auth/login` | Логин: возвращает access + refresh токены |
+| POST | `/auth/login` | Логин: нормализует username (`trim().lower()`), отклоняет inactive/deleted users, возвращает access + refresh токены |
 | POST | `/auth/refresh` | Обновить токены по refresh-токену |
 | POST | `/auth/logout` | Отозвать refresh-токен |
 | GET | `/auth/me` | Профиль текущего пользователя |
@@ -186,9 +187,9 @@ OpenAPI: `BearerAuth` (JWT) зарегистрирован как `securitySchem
 | POST | `/inventory/sessions/{id}/reopen` | Возобновить ревизию |
 | DELETE | `/inventory/sessions/{id}` | Удалить сессию (soft-delete) |
 | GET | `/inventory/sessions/{id}/entries` | Позиции ревизии |
-| GET | `/inventory/sessions/{id}/entries/snapshot` | Снапшот для оффлайн-кэша |
+| GET | `/inventory/sessions/{id}/entries-snapshot` | Снапшот для оффлайн-кэша |
 | POST | `/inventory/sessions/{id}/entries` | Добавить/обновить позицию (idempotency-key) |
-| PATCH | `/inventory/sessions/{id}/entries/{entry_id}` | Скорректировать позицию (If-Match versioning) |
+| PATCH | `/inventory/sessions/{id}/entries/{entry_id}` | Скорректировать позицию (optimistic locking через `version` в body) |
 | DELETE | `/inventory/sessions/{id}/entries/{entry_id}` | Удалить позицию |
 | GET | `/inventory/sessions/{id}/events/recent` | Журнал последних событий |
 | GET | `/inventory/sessions/{id}/audit` | Аудит-лог позиций |
@@ -431,7 +432,7 @@ Playwright (e2e tests)
 #### Layout
 | Компонент | Описание |
 |-----------|----------|
-| `layout/app-shell.tsx` | Оболочка: sidebar с логотипом (mark + wordmark), навигация, online-users, heartbeat, maintenance-banner |
+| `layout/app-shell.tsx` | Оболочка: sidebar/topbar с PNG-лого (`/public/brand/logo.png`), wordmark `ZERE Restaurant`, навигация, online-users, heartbeat, maintenance-banner |
 | `layout/empty-state.tsx` | Заглушка пустого состояния |
 | `layout/page-skeleton.tsx` | Скелетон при загрузке |
 | `layout/page-stub.tsx` | Страница-заглушка |
@@ -466,7 +467,12 @@ Playwright (e2e tests)
 | `useOnlineUsers` | GET `/users/online` каждые 15 с |
 | `useMaintenanceMode` | GET `/health/ready` каждые 30 с |
 | `useSuccessGlow` | Анимация glow при сохранении |
-| `useFastEntry` | Главный хук ввода (≈800 строк): поиск, qty, favorites, offline, draft, sync |
+| `useFastEntry` | Координатор fast-entry: агрегирует подхуки, TanStack Query, optimistic journal, auto-purge подтверждённых offline-элементов |
+| `useFavorites` | Избранное по складу, long-press логика, localStorage |
+| `useOfflineSync` | Онлайн/оффлайн-детекция, backend probe, sync/retry/conflict queue |
+| `useCatalogFetch` | Раннее восстановление каталога из IndexedDB, ETag refresh, in-memory search index |
+| `useDraft` | Восстановление и сохранение черновика fast-entry |
+| `useEntrySubmit` | Единая write-pipeline: idempotency, optimistic snapshot/recent-events, enqueue fallback |
 | `useAppReady` | Заглушка готовности приложения |
 
 ### 7.6 Оффлайн-архитектура
@@ -475,12 +481,12 @@ Playwright (e2e tests)
 
 ```
 [User Input]
-     │ online?
-     ├── YES → POST /inventory/.../entries  (с Idempotency-Key)
-     │              ↓ 200 OK → invalidate queries
-     └── NO  → добавить в OfflineEntryQueue (IndexedDB / localStorage fallback)
-                    ↓ при восстановлении сети
-                syncOfflineQueue() → retry с backoff
+   │ online + backend reachable?
+   ├── YES → optimistic UI + POST /inventory/.../entries (Idempotency-Key)
+   │              ↓ success → invalidate queries + confirm by recent-events
+   └── NO  → enqueue в OfflineEntryQueue (IndexedDB / localStorage fallback)
+          ↓ при восстановлении сети
+        syncOfflineQueue() → backend probe → retry с backoff
 
 IndexedDB stores:
   pending_entries          — offline queue (keyPath: idempotency_key)
@@ -488,11 +494,15 @@ IndexedDB stores:
   inventory_entries_snapshot — снапшот позиций сессии (keyPath: session_id)
 ```
 
-**Deduplication:** каждый запрос несёт `Idempotency-Key` (UUID). Бэкенд хранит ключи в таблице `idempotency_keys`.
+**Deduplication:** каждый запрос несёт `Idempotency-Key` (UUID). Бэкенд хранит ключи в таблице `idempotency_keys`. На клиенте pending/synced queue items дедуплицируются с server recent-events по `idempotency_key ↔ request_id`.
 
 **Draft restore:** незавершённый ввод (search + qty) сохраняется в localStorage по ключу `username:warehouseId`, восстанавливается при следующем открытии вкладки (TTL 7 дней).
 
-**Build-version healing:** при обнаружении смены build-ID (`NEXT_PUBLIC_BUILD_TS`) автоматически очищаются StateCache (IndexedDB catalog/snapshot, localStorage профиль и драфт), но **не** pending_entries.
+**Warm cache restore:** каталог восстанавливается из IndexedDB сразу после определения `warehouseId`, ещё до загрузки активной session query, чтобы поиск был доступен без сетевой задержки.
+
+**Queue safety:** sync не удаляет успешно отправленные записи сразу; они остаются в storage как `synced` до тех пор, пока серверное событие не вернётся в recent-events. После подтверждения отдельный auto-purge эффект в `useFastEntry` удаляет их из очереди.
+
+**Build-version healing:** при обнаружении смены build-ID (`NEXT_PUBLIC_BUILD_TS`) автоматически очищаются StateCache (IndexedDB catalog/snapshot, localStorage профиль и draft), но **не** pending_entries.
 
 ### 7.7 Интернационализация
 
@@ -501,7 +511,7 @@ IndexedDB stores:
 | Русский (default) | `ru` | `lib/i18n/dictionaries/ru.ts` |
 | Казахский | `kk` | `lib/i18n/dictionaries/kk.ts` |
 
-`LanguageProvider` + `useLanguage()` + `t(key)`. Язык хранится в `localStorage` (`app-language`). Казахский словарь частичный — недостающие ключи fallback к русскому. Всего ≈ 180 ключей.
+`LanguageProvider` + `useLanguage()` + строго типизированный `t(key: DictionaryKeys)`. Язык хранится в `localStorage` (`app-language`). Казахский словарь частичный — недостающие ключи fallback к русскому. Всего ≈ 180 ключей.
 
 ---
 
@@ -518,7 +528,7 @@ IndexedDB stores:
 ```
 
 - Один склад — максимум 1 активная (DRAFT) сессия (UNIQUE partial index).
-- `revision_no` — монотонный счётчик по складу.
+- `revision_no` — минимальный свободный положительный номер по складу; если в истории есть дыры, они переиспользуются.
 - При закрытии снапшотятся итоги в `inventory_session_totals`.
 
 ### 8.2 Ввод позиции
@@ -527,7 +537,7 @@ IndexedDB stores:
 - **ADD** — добавить к текущему количеству
 - **SET** — установить абсолютное значение
 
-Optimistic locking: при SET клиент передаёт ожидаемый `version` через заголовок `If-Match`. Сервер сравнивает с текущим; при несовпадении — 409 `VERSION_CONFLICT`.
+Optimistic locking: при PATCH клиент передаёт ожидаемый `version` в body. Сервер сравнивает с текущим; при несовпадении — 409 `VERSION_CONFLICT`.
 
 Валидация количества:
 - Минимум: 0.01
@@ -625,6 +635,26 @@ clsx + tailwind-merge
 | `inventory_zone_progress` | модель заведена, но population-логика в роутере inventory |
 | PWA / Service Worker | sw-registrar подключён, но полноценный `manifest.ts` только базовый |
 
+### 12.1 Кодовые ориентиры для внешнего архитектора
+
+Ниже — минимальный маршрут чтения кода, если нужно быстро понять систему без полного обхода репозитория.
+
+| Область | Файл | Что смотреть |
+|--------|------|--------------|
+| API bootstrap | `backend/app/main.py` | middleware chain, router registration, global exception handlers |
+| Auth / security | `backend/app/core/deps.py`, `backend/app/core/security.py`, `backend/app/routers/auth.py` | JWT, refresh rotation, active/deleted user checks |
+| Inventory API | `backend/app/routers/inventory.py` | session lifecycle, idempotent POST, optimistic locking, snapshots, progress |
+| Export / XLSX | `backend/app/services/export.py`, `backend/app/services/export_repository.py` | accounting export, dynamic row trimming, DB projections |
+| Frontend shell | `frontend/components/layout/app-shell.tsx` | protected layout, role-aware navigation, brand rendering |
+| Inventory screen | `frontend/app/inventory/page.tsx`, `frontend/components/inventory/fast-entry-container.tsx` | page composition, tabs, fast-entry wiring |
+| Fast-entry coordinator | `frontend/lib/hooks/use-fast-entry.ts` | TanStack Query orchestration, recent journal derivation, auto-purge confirmed queue |
+| Fast-entry write path | `frontend/lib/hooks/use-entry-submit.ts` | optimistic updates, enqueue fallback, mutation typing |
+| Offline sync | `frontend/lib/hooks/use-offline-sync.ts` | backend probe, retry policy, synced-item retention until confirmation |
+| Catalog/draft/favorites | `frontend/lib/hooks/use-catalog-fetch.ts`, `frontend/lib/hooks/use-draft.ts`, `frontend/lib/hooks/use-favorites.ts` | early cache restore, draft restore, local favorites |
+| Client API layer | `frontend/lib/api/inventory.ts`, `frontend/lib/api/request.ts` | request helpers, `entries-snapshot` path, health probe, auth proxy semantics |
+| i18n | `frontend/lib/i18n/index.ts`, `frontend/lib/i18n/language-provider.tsx` | `DictionaryKeys`, typed translator, language persistence |
+| Regression coverage | `backend/tests/test_inventory_*.py`, `frontend/tests/` | behavioural contracts around sync, idempotency, optimistic lock, exports |
+
 ---
 
 ## 13. Локальная разработка
@@ -671,4 +701,4 @@ docker compose -f docker-compose.prod.yml up -d frontend
 
 ---
 
-*Документ сгенерирован автоматически на основе анализа исходного кода.*
+*Документ актуализирован вручную по состоянию репозитория на 2026-03-19.*
