@@ -5,6 +5,10 @@ import type { DictionaryKeys } from "@/lib/i18n";
 import { ApiRequestError, saveInventoryEntry } from "@/lib/api/http";
 import { probeBackendHealth } from "@/lib/api/request";
 import {
+  cancelInventoryRecentQueries,
+  invalidateInventorySessionQueries,
+} from "@/lib/inventory-query-invalidation";
+import {
   loadOfflineEntryQueue,
   updateOfflineEntryQueue,
   type OfflineEntryQueueItem,
@@ -96,10 +100,7 @@ export function useOfflineSync(params: {
     // Awaited (not fire-and-forget) so the cancellation completes
     // before we start POSTing entries.
     const qc = queryClientRef.current;
-    await Promise.all([
-      qc.cancelQueries({ queryKey: ["recent-entries"] }),
-      qc.cancelQueries({ queryKey: ["recent-events"] }),
-    ]);
+    await cancelInventoryRecentQueries(qc);
 
     const now = Date.now();
     setOfflineQueue(
@@ -238,16 +239,12 @@ export function useOfflineSync(params: {
       if (sentCount > 0) {
         console.info("[offline-sync] synced", { sentCount, conflictCount, remaining: nextQueue.length });
         onSyncSuccessRef.current?.();
-        await Promise.all([
-          qc.invalidateQueries({ queryKey: ["recent-entries"] }),
-          qc.invalidateQueries({ queryKey: ["recent-events"] }),
-          qc.invalidateQueries({ queryKey: ["session-entries"] }),
-          qc.invalidateQueries({ queryKey: ["session-audit"] }),
-          qc.invalidateQueries({ queryKey: ["session-audit-log"] }),
-          qc.invalidateQueries({ queryKey: ["session-progress"] }),
-          qc.invalidateQueries({ queryKey: ["items-frequent"] }),
-          qc.invalidateQueries({ queryKey: ["items-recent"] }),
-        ]);
+        const sessionId = snapshot.find((item) => item.session_id)?.session_id ?? null;
+        await invalidateInventorySessionQueries({
+          queryClient: qc,
+          sessionId,
+          activeSessionQueryKey: activeSessionQueryKeyRef.current,
+        });
 
         // Synced items are NOT removed here.  The journal derives
         // its view by deduplicating queue items against server events

@@ -18,7 +18,10 @@ export function ProgressCard({
   const { t } = useLanguage();
 
   return (
-    <section className="space-y-4 rounded-2xl border border-border/70 bg-card/95 p-4 shadow-sm transition-all duration-150 hover:shadow-md motion-reduce:transition-none md:p-5">
+    <section
+      data-testid="inventory-progress-card"
+      className="space-y-4 rounded-2xl border border-border/70 bg-card/95 p-4 shadow-sm transition-all duration-150 hover:shadow-md motion-reduce:transition-none md:p-5"
+    >
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold tracking-wide">{t("inventory.progress.title")}</h2>
       </div>
@@ -34,17 +37,17 @@ export function ProgressCard({
             <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               <span>
                 {t("inventory.progress.items_counted")}:{" "}
-                <strong className="font-semibold tabular-nums text-foreground">
+                <strong data-testid="inventory-progress-total" className="font-semibold tabular-nums text-foreground">
                   {enteredCount}
                 </strong>
               </span>
               <span>
                 {t("inventory.progress.by_you")}:{" "}
-                <strong className="font-semibold tabular-nums text-foreground">
+                <strong data-testid="inventory-progress-mine" className="font-semibold tabular-nums text-foreground">
                   {enteredByUserCount}
                 </strong>
               </span>
-              <span className="min-w-0 basis-full truncate sm:basis-auto">
+              <span data-testid="inventory-progress-last-change" className="min-w-0 basis-full truncate sm:basis-auto">
                 {t("inventory.progress.last_change")}:{" "}
                 {sessionProgress.last_activity_at
                   ? formatDateTime(sessionProgress.last_activity_at)
@@ -58,13 +61,13 @@ export function ProgressCard({
           <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span>
               {t("inventory.progress.items_counted")}:{" "}
-              <strong className="font-semibold tabular-nums text-foreground">0</strong>
+              <strong data-testid="inventory-progress-total" className="font-semibold tabular-nums text-foreground">0</strong>
             </span>
             <span>
               {t("inventory.progress.by_you")}:{" "}
-              <strong className="font-semibold tabular-nums text-foreground">0</strong>
+              <strong data-testid="inventory-progress-mine" className="font-semibold tabular-nums text-foreground">0</strong>
             </span>
-            <span className="min-w-0 basis-full truncate sm:basis-auto">
+            <span data-testid="inventory-progress-last-change" className="min-w-0 basis-full truncate sm:basis-auto">
               {t("inventory.progress.last_change")}: —
             </span>
           </div>

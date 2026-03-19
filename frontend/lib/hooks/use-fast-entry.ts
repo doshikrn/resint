@@ -20,6 +20,7 @@ import {
 } from "@/lib/api/http";
 import { mapApiError } from "@/lib/api/error-mapper";
 import { loadEntriesSnapshotCache, saveEntriesSnapshotCache } from "@/lib/inventory-offline-cache";
+import { invalidateInventorySessionQueries } from "@/lib/inventory-query-invalidation";
 import { type OfflineEntryQueueItem, updateOfflineEntryQueue } from "@/lib/offline-entry-queue";
 import { useLanguage } from "@/lib/i18n/language-provider";
 import { useSuccessGlow } from "@/lib/hooks/use-success-glow";
@@ -349,16 +350,11 @@ export function useFastEntry(params: UseFastEntryParams) {
       setInlineErrorDebug(null);
       setToastMessage(t("toast.undo_done"));
       setSnapshotRefetchCounter((c) => c + 1);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["recent-entries", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["recent-events", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["session-entries", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["session-audit", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["session-audit-log", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["session-progress", variables.sessionId] }),
-        queryClient.invalidateQueries({ queryKey: ["items-frequent"] }),
-        queryClient.invalidateQueries({ queryKey: ["items-recent"] }),
-      ]);
+      await invalidateInventorySessionQueries({
+        queryClient,
+        sessionId: variables.sessionId,
+        activeSessionQueryKey,
+      });
     },
     onError: (error) => {
       if (error instanceof ApiRequestError && error.body.includes("SESSION_CLOSED")) {
@@ -516,6 +512,11 @@ export function useFastEntry(params: UseFastEntryParams) {
     }
 
     const handleRefresh = () => {
+      void invalidateInventorySessionQueries({
+        queryClient,
+        sessionId: session.id,
+        activeSessionQueryKey,
+      });
       void refetchEntriesSnapshot();
     };
 
@@ -528,7 +529,7 @@ export function useFastEntry(params: UseFastEntryParams) {
       window.removeEventListener("focus", handleRefresh);
       window.removeEventListener("online", handleRefresh);
     };
-  }, [isClosed, offlineQueueLoaded, refetchEntriesSnapshot, session?.id]);
+  }, [activeSessionQueryKey, isClosed, offlineQueueLoaded, queryClient, refetchEntriesSnapshot, session?.id]);
 
   // ── Computed from queries ──────────────────────────────────────────
 

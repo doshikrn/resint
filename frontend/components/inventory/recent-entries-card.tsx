@@ -95,6 +95,7 @@ export const RecentEntriesCard = memo(function RecentEntriesCard({
             <div className="inline-flex h-7 rounded-lg border border-border/70 bg-muted/50 p-0.5 text-[11px] font-medium">
               <button
                 type="button"
+                data-testid="inventory-recent-filter-mine"
                 className={`rounded-md px-2 transition-all duration-150 ${filterMine ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                 onClick={() => onFilterChange(true)}
               >
@@ -102,6 +103,7 @@ export const RecentEntriesCard = memo(function RecentEntriesCard({
               </button>
               <button
                 type="button"
+                data-testid="inventory-recent-filter-all"
                 className={`rounded-md px-2 transition-all duration-150 ${!filterMine ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                 onClick={() => onFilterChange(false)}
               >
@@ -136,6 +138,7 @@ export const RecentEntriesCard = memo(function RecentEntriesCard({
                 {group.items.map((row, index) => (
                   <div
                     key={row.key}
+                    data-testid="inventory-recent-row"
                     className={`rounded-xl border border-border/70 bg-background/85 px-2.5 py-2 shadow-sm transition-all duration-150 hover:bg-muted/40 hover:shadow-md motion-reduce:transition-none ${
                       row.status !== "saved" ? "border-dashed" : ""
                     }`}
