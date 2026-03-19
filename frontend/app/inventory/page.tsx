@@ -15,13 +15,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/lib/i18n/language-provider";
 import { canManageRevision as checkCanManageRevision, canExport, canAccessAllWarehouses, canViewAudit as checkCanViewAudit } from "@/lib/permissions";
@@ -94,6 +93,7 @@ type IntentionalMenuTriggerProps = {
 function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenuTriggerProps) {
   const pointerStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const pointerMovedRef = useRef(false);
+  const suppressClickUntilRef = useRef(0);
 
   const resetGesture = useCallback(() => {
     pointerStartRef.current = null;
@@ -101,12 +101,18 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
   }, []);
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    if (event.pointerType === "mouse" && event.button !== 0) {
+    if (event.pointerType === "mouse") {
+      if (event.button !== 0) {
+        resetGesture();
+      }
+      return;
+    }
+
+    if (event.button !== 0) {
       resetGesture();
       return;
     }
 
-    event.preventDefault();
 
     pointerStartRef.current = {
       pointerId: event.pointerId,
@@ -117,6 +123,10 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
   }, [resetGesture]);
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse") {
+      return;
+    }
+
     const start = pointerStartRef.current;
 
     if (!start || start.pointerId !== event.pointerId) {
@@ -132,6 +142,10 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
   }, []);
 
   const handlePointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse") {
+      return;
+    }
+
     const start = pointerStartRef.current;
 
     if (!start || start.pointerId !== event.pointerId) {
@@ -146,6 +160,7 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
       && deltaY <= MENU_TAP_DRAG_THRESHOLD_PX;
 
     resetGesture();
+    suppressClickUntilRef.current = Date.now() + 400;
 
     if (shouldTreatAsTap) {
       onToggle();
@@ -155,6 +170,15 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
   const handlePointerCancel = useCallback(() => {
     resetGesture();
   }, [resetGesture]);
+
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (Date.now() < suppressClickUntilRef.current) {
+      event.preventDefault();
+      return;
+    }
+
+    onToggle();
+  }, [onToggle]);
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -175,6 +199,7 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
       <MoreHorizontal className="h-5 w-5 sm:h-4 sm:w-4" />
@@ -1044,37 +1069,49 @@ export default function InventoryPage() {
                           </Button>
                         ) : null}
                         {canDeleteRevision ? (
-                          <DropdownMenu
-                            open={reportActionsMenuOpen}
-                            onOpenChange={(nextOpen) => {
-                              setReportActionsMenuOpen(nextOpen);
-                            }}
-                          >
-                            <DropdownMenuTrigger asChild>
-                              <IntentionalMenuTrigger
-                                ariaLabel="Дополнительные действия"
-                                isOpen={reportActionsMenuOpen}
-                                onToggle={() => setReportActionsMenuOpen((currentOpen) => !currentOpen)}
-                              />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" sideOffset={8} className="w-56 rounded-xl border border-border/60 bg-popover/95 p-1.5 shadow-lg">
-                              <DropdownMenuLabel className="px-2.5 py-2 text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
-                                Опасное действие
-                              </DropdownMenuLabel>
-                              <DropdownMenuSeparator className="mx-0 my-1" />
-                              <DropdownMenuItem
-                                className="min-h-11 rounded-lg px-2.5 text-destructive focus:bg-destructive/10 focus:text-destructive"
-                                disabled={!selectedReportSession.is_closed || deleteSessionMutation.isPending}
-                                onClick={() => {
-                                  if (!selectedReportSession.is_closed) return;
-                                  setReportActionsMenuOpen(false);
-                                  setDeleteConfirmSessionId(selectedReportSession.id);
-                                }}>
-                                <Trash2 className="h-4 w-4" />
-                                {deleteSessionMutation.isPending ? t("inventory.reports.deleting") : t("inventory.reports.delete_revision")}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <>
+                            <IntentionalMenuTrigger
+                              ariaLabel="Дополнительные действия"
+                              isOpen={reportActionsMenuOpen}
+                              onToggle={() => setReportActionsMenuOpen((currentOpen) => !currentOpen)}
+                            />
+                            <Sheet open={reportActionsMenuOpen} onOpenChange={setReportActionsMenuOpen}>
+                              <SheetContent side="bottom" className="rounded-t-3xl border-border/60 px-4 pb-8 pt-8 sm:left-1/2 sm:right-auto sm:w-[28rem] sm:-translate-x-1/2 sm:rounded-2xl sm:border">
+                                <SheetHeader className="text-left">
+                                  <SheetTitle>Действия с ревизией</SheetTitle>
+                                  <SheetDescription>
+                                    Выберите действие для ревизии #{selectedReportSession.revision_no}.
+                                  </SheetDescription>
+                                </SheetHeader>
+                                <div className="mt-5 space-y-3">
+                                  <div className="rounded-2xl border border-border/60 bg-muted/20 p-2">
+                                    <button
+                                      type="button"
+                                      className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-destructive transition-colors hover:bg-destructive/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                                      disabled={!selectedReportSession.is_closed || deleteSessionMutation.isPending}
+                                      onClick={() => {
+                                        if (!selectedReportSession.is_closed) return;
+                                        setReportActionsMenuOpen(false);
+                                        setDeleteConfirmSessionId(selectedReportSession.id);
+                                      }}
+                                    >
+                                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                                        <Trash2 className="h-4 w-4" />
+                                      </span>
+                                      <span className="flex min-w-0 flex-1 flex-col">
+                                        <span className="text-sm font-semibold">
+                                          {deleteSessionMutation.isPending ? t("inventory.reports.deleting") : t("inventory.reports.delete_revision")}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">
+                                          Доступно только для закрытой ревизии и всегда требует подтверждения.
+                                        </span>
+                                      </span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </SheetContent>
+                            </Sheet>
+                          </>
                         ) : null}
                       </div>
                     ) : null}
