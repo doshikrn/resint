@@ -18,6 +18,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -51,7 +53,7 @@ import {
 import { formatQuantity, formatQuantityWithUnit, formatUnit } from "@/lib/format-quantity";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReportItemsDesktopTable, ReportItemsMobileList } from "@/components/inventory/report-items-table";
-import { AlertTriangle, Check, Download, Loader2, MoreHorizontal, Search } from "lucide-react";
+import { AlertTriangle, Check, Download, Loader2, MoreHorizontal, Search, Trash2 } from "lucide-react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
@@ -154,7 +156,7 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
     <Button
       type="button"
       variant="ghost"
-      className="h-9 w-full rounded-lg hover:bg-transparent hover:text-current active:bg-muted/60 sm:w-auto sm:hover:bg-accent sm:hover:text-accent-foreground"
+      className="h-11 w-full rounded-xl border border-border/60 bg-background/90 px-0 text-foreground shadow-sm touch-manipulation hover:bg-transparent hover:text-current active:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring sm:h-9 sm:w-9 sm:rounded-lg sm:border-transparent sm:bg-transparent sm:shadow-none sm:hover:bg-accent sm:hover:text-accent-foreground"
       aria-label={ariaLabel}
       aria-haspopup="menu"
       aria-expanded={isOpen}
@@ -164,7 +166,7 @@ function IntentionalMenuTrigger({ ariaLabel, isOpen, onToggle }: IntentionalMenu
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
-      <MoreHorizontal className="h-4 w-4" />
+      <MoreHorizontal className="h-5 w-5 sm:h-4 sm:w-4" />
     </Button>
   );
 }
@@ -579,6 +581,11 @@ export default function InventoryPage() {
     [reportSessionId, revisionHistory],
   );
 
+  const deleteConfirmSession: InventorySessionListItem | null = useMemo(
+    () => revisionHistory.find((row) => row.id === deleteConfirmSessionId) ?? null,
+    [deleteConfirmSessionId, revisionHistory],
+  );
+
   useEffect(() => {
     if (!selectedReportSession) {
       setReportActionsMenuOpen(false);
@@ -761,16 +768,16 @@ export default function InventoryPage() {
         ) : null}
 
         {/* ── Tab bar ── */}
-        <div className="rounded-xl border border-border/60 bg-muted/40 p-1 md:shrink-0">
+        <div className="rounded-xl border border-border/60 bg-muted/40 p-1.5 md:shrink-0">
           <div
-            className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-0"
+            className="grid grid-cols-1 gap-1.5 sm:flex sm:flex-row sm:flex-wrap sm:items-center sm:gap-0"
             onTouchStart={handleTabTouchStart}
             onTouchMove={handleTabTouchMove}
           >
             <Button
               type="button"
               variant={inventoryView === "revision" ? "default" : "ghost"}
-              className="h-9 w-full whitespace-normal rounded-lg px-3 text-xs font-medium sm:w-auto sm:text-sm"
+              className="h-10 w-full whitespace-normal rounded-lg px-3 text-sm font-medium sm:h-9 sm:w-auto"
               onClick={() => switchTab("revision")}
             >
               {t("inventory.tab.revision")}
@@ -781,7 +788,7 @@ export default function InventoryPage() {
                 <Button
                   type="button"
                   variant={inventoryView === "management" ? "default" : "ghost"}
-                  className="h-9 w-full whitespace-normal rounded-lg px-3 text-xs font-medium sm:w-auto sm:text-sm"
+                  className="h-10 w-full whitespace-normal rounded-lg px-3 text-sm font-medium sm:h-9 sm:w-auto"
                   onClick={() => switchTab("management")}
                 >
                   {t("inventory.tab.management")}
@@ -792,7 +799,7 @@ export default function InventoryPage() {
             <Button
               type="button"
               variant={inventoryView === "reports" ? "default" : "ghost"}
-              className="h-9 w-full whitespace-normal rounded-lg px-3 text-xs font-medium sm:w-auto sm:text-sm"
+              className="h-10 w-full whitespace-normal rounded-lg px-3 text-sm font-medium sm:h-9 sm:w-auto"
               onClick={() => switchTab("reports")}
             >
               {t("inventory.tab.reports")}
@@ -960,9 +967,9 @@ export default function InventoryPage() {
             </div>
           </div>
         ) : showReportsView ? (
-          <div className="grid min-w-0 w-full gap-2.5 md:flex-1 md:min-h-0">
-            <div className="h-full min-h-0 flex flex-1 flex-col gap-4 overflow-hidden">
-              <div className="grid min-w-0 gap-2.5 sm:gap-3 lg:grid-cols-[minmax(220px,0.85fr)_minmax(0,1.6fr)] lg:flex-1 lg:min-h-0">
+          <div className="grid min-w-0 w-full gap-3 md:flex-1 md:min-h-0">
+            <div className="h-full min-h-0 flex flex-1 flex-col gap-4 overflow-hidden sm:gap-4.5">
+              <div className="grid min-w-0 gap-3 sm:gap-3.5 lg:grid-cols-[minmax(220px,0.85fr)_minmax(0,1.6fr)] lg:flex-1 lg:min-h-0">
                 <div className="min-w-0 space-y-2 rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm max-h-[45dvh] overflow-y-auto sm:p-4 lg:max-h-none lg:min-h-0">
                   <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                     {t("inventory.reports.history_title")}
@@ -1009,7 +1016,7 @@ export default function InventoryPage() {
                       ) : null}
                     </div>
                     {selectedReportSession ? (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                      <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
                         {userCanExport ? (
                           <Button type="button" variant="default" className="h-9 w-full rounded-lg sm:w-auto"
                             disabled={exportMutation.isPending}
@@ -1029,9 +1036,7 @@ export default function InventoryPage() {
                           <DropdownMenu
                             open={reportActionsMenuOpen}
                             onOpenChange={(nextOpen) => {
-                              if (!nextOpen) {
-                                setReportActionsMenuOpen(false);
-                              }
+                              setReportActionsMenuOpen(nextOpen);
                             }}
                           >
                             <DropdownMenuTrigger asChild>
@@ -1041,15 +1046,20 @@ export default function InventoryPage() {
                                 onToggle={() => setReportActionsMenuOpen((currentOpen) => !currentOpen)}
                               />
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
+                            <DropdownMenuContent align="end" sideOffset={8} className="w-56 rounded-xl border border-border/60 bg-popover/95 p-1.5 shadow-lg">
+                              <DropdownMenuLabel className="px-2.5 py-2 text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
+                                Опасное действие
+                              </DropdownMenuLabel>
+                              <DropdownMenuSeparator className="mx-0 my-1" />
                               <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
+                                className="min-h-11 rounded-lg px-2.5 text-destructive focus:bg-destructive/10 focus:text-destructive"
                                 disabled={!selectedReportSession.is_closed || deleteSessionMutation.isPending}
                                 onClick={() => {
                                   if (!selectedReportSession.is_closed) return;
                                   setReportActionsMenuOpen(false);
                                   setDeleteConfirmSessionId(selectedReportSession.id);
                                 }}>
+                                <Trash2 className="h-4 w-4" />
                                 {deleteSessionMutation.isPending ? t("inventory.reports.deleting") : t("inventory.reports.delete_revision")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -1294,6 +1304,15 @@ export default function InventoryPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t("inventory.manage.confirm_delete_title")}</AlertDialogTitle>
             <AlertDialogDescription className="whitespace-pre-line">{t("inventory.manage.confirm_delete_body")}</AlertDialogDescription>
+            {deleteConfirmSession ? (
+              <div className="mt-3 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-left">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-destructive/80">Будет удалено</p>
+                <p className="mt-1 text-sm font-medium text-foreground">Ревизия #{deleteConfirmSession.revision_no}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {resolveWarehouseName(deleteConfirmSession.warehouse_id) ?? "Склад не указан"}
+                </p>
+              </div>
+            ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
