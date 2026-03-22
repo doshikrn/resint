@@ -61,7 +61,7 @@ inventory-app/
 │   └── package.json
 └── docs/
     ├── architecture.md    # ← этот файл
-    └── adr/               # Architecture Decision Records (001–004)
+    └── adr/               # Architecture Decision Records (001–012)
 ```
 
 ---
@@ -141,7 +141,14 @@ OpenAPI: `BearerAuth` (JWT) зарегистрирован как `securitySchem
 
 | Модуль | LOC | Кол-во routes | Домен |
 |--------|-----|:---:|-------|
-| `_helpers.py` | ~1 030 | 0 | 48 общих helper-функций (auth, validation, events, session lifecycle) |
+| `_helpers.py` | ~80 | 0 | Re-export facade (делегирует в 7 sub-модулей) |
+| `_common.py` | ~10 | 0 | `_raise_api_error` — shared micro-utility |
+| `_auth.py` | ~80 | 0 | Permission guards, warehouse access (9 функций) |
+| `_validation.py` | ~100 | 0 | Qty normalisation, item validation, ETag/version (7 функций) |
+| `_events.py` | ~220 | 0 | Audit-event builders, contributors map (6 функций) |
+| `_session_ops.py` | ~260 | 0 | Session CRUD, station resolution, snapshots (14 функций) |
+| `_progress.py` | ~140 | 0 | Zone-progress state machine (5 функций) |
+| `_idempotency.py` | ~150 | 0 | Idempotency, report aggregation, catalog ETag (7 функций) |
 | `sessions.py` | ~660 | 10 | Жизненный цикл сессий (create, close, reopen, delete) |
 | `entries.py` | ~660 | 6 | Entry CRUD (add, patch, delete, recent) |
 | `audit.py` | ~200 | 5 | Аудит-лог и верификация |
@@ -150,8 +157,9 @@ OpenAPI: `BearerAuth` (JWT) зарегистрирован как `securitySchem
 | `__init__.py` | ~30 | 0 | Сборка sub-routers в один `router` |
 
 Импорт в `main.py` не изменился: `from app.routers.inventory import router`.
+Все sub-routers продолжают импортировать из `_helpers.py` (re-export facade) — zero breaking changes.
 
-> **ADR:** `docs/adr/001-inventory-router-package-split.md`
+> **ADR:** `docs/adr/001-inventory-router-package-split.md`, `docs/adr/005-helpers-module-split.md`
 
 ### 4.3 Эндпоинты — подробно
 
@@ -668,10 +676,10 @@ clsx + tailwind-merge
 
 | Тема | Описание |
 |------|----------|
-| `admin` role | legacy-alias для `chef`; в коде везде обрабатывается отдельно |
-| `warehouse_id` vs `default_warehouse_id` | два FK на складе у пользователя; `warehouse_id` = текущий, `default_warehouse_id` = постоянный |
-| Maintenance mode | флаг в памяти (middleware), не персистируется — сбрасывается при перезапуске |
-| Rate limiter | хранится в памяти одного процесса; при WEB_CONCURRENCY > 1 не синхронизируется |
+| `admin` role | legacy-alias для `chef`; в коде везде обрабатывается отдельно. ADR-007 |
+| `warehouse_id` vs `default_warehouse_id` | два FK на складе у пользователя; `warehouse_id` = текущий, `default_warehouse_id` = постоянный. ADR-009 |
+| Maintenance mode | флаг в памяти (middleware), не персистируется — сбрасывается при перезапуске. ADR-008 |
+| Rate limiter | хранится в памяти одного процесса; при WEB_CONCURRENCY > 1 не синхронизируется. ADR-008 |
 | Казахский перевод | частичный; fallback к русскому |
 | `inventory_zone_progress` | модель заведена, но population-логика в роутере inventory |
 | PWA / Service Worker | sw-registrar подключён, но полноценный `manifest.ts` только базовый |
@@ -686,6 +694,14 @@ clsx + tailwind-merge
 | 002 | Выделение search engine в pure-модуль |
 | 003 | Централизация shared-типов fast-entry; удаление мёртвых хуков |
 | 004 | Auth hardening: role check на `create_item` |
+| 005 | Разбиение `_helpers.py` на 7 focused sub-модулей |
+| 006 | Extraction бизнес-логики из `useFastEntry` в pure-функции |
+| 007 | Сохранение legacy admin role alias |
+| 008 | In-memory rate limiter и maintenance mode |
+| 009 | Dual-field дизайн warehouse (warehouse_id vs default_warehouse_id) |
+| 010 | Export source of truth (snapshot-first, live-fallback) |
+| 011 | Offline queue confirmation и auto-purge policy |
+| 012 | Auth & session cookie contract |
 
 ### 12.2 Кодовые ориентиры для внешнего архитектора
 
@@ -695,11 +711,11 @@ clsx + tailwind-merge
 |--------|------|--------------|
 | API bootstrap | `backend/app/main.py` | middleware chain, router registration, global exception handlers |
 | Auth / security | `backend/app/core/deps.py`, `backend/app/core/security.py`, `backend/app/routers/auth.py` | JWT, refresh rotation, active/deleted user checks |
-| Inventory API | `backend/app/routers/inventory/` (package) | `sessions.py` — lifecycle; `entries.py` — idempotent POST, optimistic locking; `audit.py`; `progress.py`; `reports.py`; `_helpers.py` — shared utils |
+| Inventory API | `backend/app/routers/inventory/` (package) | `sessions.py` — lifecycle; `entries.py` — idempotent POST; `audit.py`; `progress.py`; `reports.py`; `_helpers.py` — re-export facade → `_auth`, `_validation`, `_events`, `_session_ops`, `_progress`, `_idempotency` |
 | Export / XLSX | `backend/app/services/export.py`, `backend/app/services/export_repository.py` | accounting export, footer-marker-aware trimming, active-catalog baseline + session-entry overlay, fallback rows/logging |
 | Frontend shell | `frontend/components/layout/app-shell.tsx` | protected layout, role-aware navigation, simplified topbar branding, mobile sheet navigation |
 | Inventory screen | `frontend/app/inventory/page.tsx`, `frontend/components/inventory/fast-entry-container.tsx` | page composition, tabs, fast-entry wiring, primary input-first UX structure |
-| Fast-entry coordinator | `frontend/lib/hooks/use-fast-entry.ts` | TanStack Query orchestration, debounced search, recent journal derivation, auto-purge confirmed queue, rerender-sensitive derived state |
+| Fast-entry coordinator | `frontend/lib/hooks/use-fast-entry.ts` | TanStack Query orchestration, debounced search; qty validation → `inventory-qty-validation.ts`; recent journal → `inventory-recent-journal.ts` |
 | Fast-entry write path | `frontend/lib/hooks/use-entry-submit.ts` | optimistic updates, enqueue fallback, mutation typing |
 | Offline sync | `frontend/lib/hooks/use-offline-sync.ts` | backend probe, retry policy, synced-item retention until confirmation |
 | Search engine | `frontend/lib/search/catalog-search.ts` | pure search: normalise, fold Cyrillic, fuzzy prefix distance, scoring — zero React deps |

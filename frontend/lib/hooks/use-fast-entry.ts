@@ -20,6 +20,8 @@ import {
 import { mapApiError } from "@/lib/api/error-mapper";
 import { loadEntriesSnapshotCache, saveEntriesSnapshotCache } from "@/lib/inventory-offline-cache";
 import { invalidateInventorySessionQueries } from "@/lib/inventory-query-invalidation";
+import { validateItemQty, computeAverageQty } from "@/lib/inventory-qty-validation";
+import { buildRecentJournalEntries, groupJournalEntries, findConfirmedQueueKeys } from "@/lib/inventory-recent-journal";
 import { updateOfflineEntryQueue } from "@/lib/offline-entry-queue";
 import { useLanguage } from "@/lib/i18n/language-provider";
 import { useSuccessGlow } from "@/lib/hooks/use-success-glow";
@@ -560,146 +562,15 @@ export function useFastEntry(params: UseFastEntryParams) {
 
   // ── Qty validation ─────────────────────────────────────────────────
 
-  const averageQtyForSelectedItem = useMemo(() => {
-    if (!selectedItem) return null;
+  const averageQtyForSelectedItem = useMemo(
+    () => computeAverageQty(selectedItem?.id ?? null, sessionAuditQuery.data),
+    [selectedItem?.id, sessionAuditQuery.data],
+  );
 
-    const events = (sessionAuditQuery.data ?? []).filter(
-      (event) => event.item_id === selectedItem.id,
-    );
-    if (events.length === 0) return null;
-
-    const values = events
-      .map((event) => event.after_quantity)
-      .filter((value) => Number.isFinite(value) && value > 0);
-
-    if (values.length === 0) return null;
-
-    const total = values.reduce((sum, value) => sum + value, 0);
-    return total / values.length;
-  }, [selectedItem, sessionAuditQuery.data]);
-
-  const qtyValidation = useMemo(() => {
-    const minQty = 0.01;
-    if (!selectedItem) {
-      return {
-        normalizedQty: null as number | null,
-        error: null as string | null,
-        wasRounded: false,
-        roundedFrom: null as number | null,
-        roundedTo: null as number | null,
-        softWarning: null as string | null,
-        confirmWarnings: [] as string[],
-      };
-    }
-
-    const raw = qty.trim();
-    if (!raw) {
-      return {
-        normalizedQty: null,
-        error: null,
-        wasRounded: false,
-        roundedFrom: null,
-        roundedTo: null,
-        softWarning: null,
-        confirmWarnings: [],
-      };
-    }
-
-    const parsedQty = Number.parseFloat(raw.replace(",", "."));
-    if (!Number.isFinite(parsedQty)) {
-      return {
-        normalizedQty: null,
-        error: t("inventory.qty.error_not_number"),
-        wasRounded: false,
-        roundedFrom: null,
-        roundedTo: null,
-        softWarning: null,
-        confirmWarnings: [],
-      };
-    }
-
-    if (parsedQty < 0) {
-      return {
-        normalizedQty: null,
-        error: t("inventory.qty.error_negative"),
-        wasRounded: false,
-        roundedFrom: null,
-        roundedTo: null,
-        softWarning: null,
-        confirmWarnings: [],
-      };
-    }
-
-    if (parsedQty <= minQty) {
-      return {
-        normalizedQty: null,
-        error: t("inventory.qty.error_positive"),
-        wasRounded: false,
-        roundedFrom: null,
-        roundedTo: null,
-        softWarning: null,
-        confirmWarnings: [],
-      };
-    }
-
-    if (isPiecesUnit && !Number.isInteger(parsedQty)) {
-      return {
-        normalizedQty: null,
-        error: t("inventory.qty.error_integer_pcs"),
-        wasRounded: false,
-        roundedFrom: null,
-        roundedTo: null,
-        softWarning: null,
-        confirmWarnings: [],
-      };
-    }
-
-    const hardMax = isPiecesUnit ? 99999 : 99999.999;
-    if (parsedQty > hardMax) {
-      return {
-        normalizedQty: null,
-        error: t("inventory.qty.error_too_large"),
-        wasRounded: false,
-        roundedFrom: null,
-        roundedTo: null,
-        softWarning: null,
-        confirmWarnings: [],
-      };
-    }
-
-    const normalizedQty = parsedQty;
-    const wasRounded = false;
-    const roundedFrom: number | null = null;
-    const roundedTo: number | null = null;
-
-    const confirmWarnings: string[] = [];
-    if (selectedItem.max_qty !== null && normalizedQty > selectedItem.max_qty) {
-      confirmWarnings.push(`Количество ${normalizedQty} больше max_qty (${selectedItem.max_qty})`);
-    }
-
-    const ratio =
-      averageQtyForSelectedItem && averageQtyForSelectedItem > 0
-        ? normalizedQty / averageQtyForSelectedItem
-        : null;
-    let softWarning: string | null = null;
-    if (ratio !== null && ratio >= 10) {
-      confirmWarnings.push(
-        `Количество в ${ratio.toFixed(1)} раз выше среднего по товару за сессию`,
-      );
-    } else if (ratio !== null && ratio >= 5) {
-      softWarning = `Необычно: в ${ratio.toFixed(1)} раз выше среднего по товару`;
-    }
-
-    return {
-      normalizedQty,
-      error: null,
-      wasRounded,
-      roundedFrom,
-      roundedTo,
-      softWarning,
-      confirmWarnings,
-    };
-  }, [averageQtyForSelectedItem, isPiecesUnit, qty, selectedItem, t]);
+  const qtyValidation = useMemo(
+    () => validateItemQty(selectedItem, qty, isPiecesUnit, averageQtyForSelectedItem, t),
+    [averageQtyForSelectedItem, isPiecesUnit, qty, selectedItem, t],
+  );
 
   const canSave = Boolean(canSearch && selectedItem && qty.trim().length > 0 && !qtyValidation.error);
 
@@ -974,104 +845,26 @@ export function useFastEntry(params: UseFastEntryParams) {
     [formatDateTime],
   );
 
-  const recentJournalEntries = useMemo(() => {
-    // Build a set of server-confirmed request IDs so we can dedup
-    // queue items whose server event has already arrived.
-    const serverRequestIds = new Set<string>();
-    for (const event of recentEvents) {
-      if (event.request_id) serverRequestIds.add(event.request_id);
-    }
-
-    // Only show queue items the server hasn't confirmed yet.
-    const pending = pendingRecent
-      .filter((entry) => !serverRequestIds.has(entry.idempotency_key))
-      .map<RecentJournalEntry>((entry) => ({
-        key: `queue-${entry.idempotency_key}`,
-        itemId: entry.item_id,
-        status: entry.status === "synced" ? "syncing" : entry.status,
-        itemName: entry.item_name,
-        quantity: entry.qty,
-        unit: entry.unit,
-        mode: entry.mode,
-        timestamp: entry.created_at,
-        countedOutsideZone: entry.counted_outside_zone,
-        countedByZone: null,
-        stationId: entry.station_id ?? null,
-        stationName: null,
-        stationDepartment: null,
-        isOwnEntry: true,
-        queueItem: entry,
-      }));
-
-    const saved = recentEvents.map<RecentJournalEntry>((event) => {
-      const entry = entriesByItemId.get(event.item_id);
-      return {
-        key: `saved-event-${event.id}`,
-        itemId: event.item_id,
-        status: "saved",
-        itemName: event.item_name,
-        quantity: event.qty_input,
-        unit: event.unit,
-        mode: event.mode === "add" ? "add" : "set",
-        timestamp: event.created_at,
-        countedOutsideZone: event.counted_outside_zone,
-        countedByZone: event.counted_by_zone,
-        stationId: event.station_id,
-        stationName: event.station_name,
-        stationDepartment: event.station_department,
-        actorUsername: event.actor_display_name ?? event.actor_username ?? undefined,
-        actorRawUsername: event.actor_username ?? undefined,
-        isOwnEntry: Boolean(currentUser?.username && event.actor_username === currentUser.username),
-        savedEntry: entry ? { itemId: entry.item_id, version: entry.version, entry } : undefined,
-      };
-    });
-
-    return [...pending, ...saved]
-      .sort(
-        (left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
-      )
-      .slice(0, 25);
-  }, [currentUser?.username, entriesByItemId, pendingRecent, recentEvents]);
+  const recentJournalEntries = useMemo(
+    () => buildRecentJournalEntries(recentEvents, pendingRecent, entriesByItemId, currentUser?.username ?? null),
+    [currentUser?.username, entriesByItemId, pendingRecent, recentEvents],
+  );
 
   const filteredRecentJournalEntries = useMemo(() => {
     if (!recentFilterMine) return recentJournalEntries;
     return recentJournalEntries.filter((row) => row.isOwnEntry);
   }, [recentFilterMine, recentJournalEntries]);
 
-  const groupedRecentJournal = useMemo(() => {
-    const groups: RecentJournalGroup[] = [];
-    for (const row of filteredRecentJournalEntries) {
-      const label = formatRelativeGroupLabel(row.timestamp);
-      const last = groups[groups.length - 1];
-      if (!last || last.label !== label) {
-        groups.push({ label, items: [row] });
-      } else {
-        last.items.push(row);
-      }
-    }
-    return groups;
-  }, [formatRelativeGroupLabel, filteredRecentJournalEntries]);
+  const groupedRecentJournal = useMemo(
+    () => groupJournalEntries(filteredRecentJournalEntries, formatRelativeGroupLabel),
+    [formatRelativeGroupLabel, filteredRecentJournalEntries],
+  );
 
   // ── Auto-purge confirmed queue items ───────────────────────────────
-  // When server events arrive with a request_id matching a queue item's
-  // idempotency_key, that item is confirmed server-side.  Remove it
-  // from IDB/LS so the queue stays clean.  The journal dedup above
-  // already hides these items visually, so this is purely a storage
-  // cleanup — no entry ever disappears from the journal.
   useEffect(() => {
-    if (recentEvents.length === 0 || offlineQueue.length === 0) return;
+    const confirmedKeys = findConfirmedQueueKeys(recentEvents, offlineQueue);
+    if (confirmedKeys.size === 0) return;
 
-    const serverRequestIds = new Set<string>();
-    for (const event of recentEvents) {
-      if (event.request_id) serverRequestIds.add(event.request_id);
-    }
-
-    const confirmed = offlineQueue.filter(
-      (item) => item.status === "synced" && serverRequestIds.has(item.idempotency_key),
-    );
-    if (confirmed.length === 0) return;
-
-    const confirmedKeys = new Set(confirmed.map((i) => i.idempotency_key));
     const cleaned = offlineQueue.filter((i) => !confirmedKeys.has(i.idempotency_key));
 
     console.info("[fast-entry] auto-purge confirmed queue items", {
