@@ -218,6 +218,21 @@ def _unit_label_ru(unit: str) -> str:
     return unit
 
 
+def _find_footer_start_row(goods_sheet) -> int | None:
+    footer_markers = (
+        "Инвентаризацию произвел",
+        "Инвентаризацию принял",
+    )
+    for row_index in range(goods_sheet.max_row, 0, -1):
+        for column_index in range(1, min(goods_sheet.max_column, 4) + 1):
+            value = goods_sheet.cell(row=row_index, column=column_index).value
+            if not isinstance(value, str):
+                continue
+            if any(marker in value for marker in footer_markers):
+                return row_index
+    return None
+
+
 def build_xlsx_accounting_template_export(rows: Iterable[dict]) -> bytes:
     if ACCOUNTING_TEMPLATE_PATH.exists():
         workbook = load_workbook(filename=ACCOUNTING_TEMPLATE_PATH)
@@ -253,12 +268,19 @@ def build_xlsx_accounting_template_export(rows: Iterable[dict]) -> bytes:
             qty_cell.value = qty
             qty_cell.number_format = "0.###"
 
-    # Delete all trailing empty rows below the last data row
+    # Trim only the empty table area. If the template contains a footer block,
+    # keep all rows from the footer marker and below intact.
     last_data_row = data_start_row + len(normalized_rows) - 1
-    total_rows = goods_sheet.max_row
-    trailing_count = total_rows - last_data_row
-    if trailing_count > 0:
-        goods_sheet.delete_rows(last_data_row + 1, trailing_count)
+    footer_start_row = _find_footer_start_row(goods_sheet)
+    if footer_start_row is not None and footer_start_row > last_data_row + 1:
+        trailing_count = footer_start_row - last_data_row - 1
+        if trailing_count > 0:
+            goods_sheet.delete_rows(last_data_row + 1, trailing_count)
+    else:
+        total_rows = goods_sheet.max_row
+        trailing_count = total_rows - last_data_row
+        if trailing_count > 0:
+            goods_sheet.delete_rows(last_data_row + 1, trailing_count)
 
     output = BytesIO()
     workbook.save(output)

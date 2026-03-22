@@ -466,6 +466,50 @@ def test_export_draft_session_download_has_template_sheet(
     assert workbook.sheetnames == ["Товары"]
 
 
+def test_export_xlsx_preserves_accounting_footer_block(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    item = seed_zone_warehouse_item["item"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item.id, "quantity": 2, "mode": "set"},
+    )
+    assert add.status_code == 200
+
+    export = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert export.status_code == 200
+
+    workbook = load_workbook(filename=BytesIO(export.content), data_only=True)
+    goods_sheet = workbook["Товары"]
+
+    footer_rows = []
+    for row_index in range(1, goods_sheet.max_row + 1):
+        cell_value = goods_sheet.cell(row=row_index, column=1).value
+        if isinstance(cell_value, str) and "Инвентаризацию произвел" in cell_value:
+            footer_rows.append((row_index, cell_value))
+
+    assert footer_rows, "Accounting footer block must be preserved in exported XLSX"
+    assert footer_rows[0][0] >= 9
+    assert footer_rows[0][0] <= 12
+
+
 def test_export_closed_session_filename_has_closed_suffix(
     client,
     auth_headers,
