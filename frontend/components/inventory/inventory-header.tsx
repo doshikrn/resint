@@ -31,10 +31,10 @@ export function InventoryHeader({
   const selectedStation = stations.find((station) => station.id === selectedStationId) ?? null;
 
   return (
-    <header className="rounded-2xl border border-muted bg-card/90 px-4 py-3 shadow-sm">
+    <header className="rounded-2xl border border-border/60 bg-card/95 px-4 py-3 shadow-sm">
       <div className="grid gap-3">
         <div className="space-y-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Станция</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Станция</span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

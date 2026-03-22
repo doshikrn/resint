@@ -66,7 +66,7 @@ function ChipsSection({
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
         {title}
       </p>
       {items.length === 0 ? (
@@ -76,7 +76,7 @@ function ChipsSection({
           {items.map((item) => (
             <div
               key={`${title}-${item.id}`}
-              className="flex items-center gap-1 rounded-xl border bg-background px-1.5 py-1 shadow-sm transition-all duration-150 hover:shadow motion-reduce:transition-none"
+              className="flex items-center gap-1 rounded-xl border border-border/50 bg-background px-1.5 py-1 shadow-sm transition-all duration-150 hover:shadow hover:border-border motion-reduce:transition-none"
             >
               <Button
                 type="button"
@@ -141,22 +141,23 @@ export function InventoryInputCard({
   const { t } = useLanguage();
 
   return (
-    <section className="space-y-5 rounded-2xl border border-border/60 bg-card/95 p-4 shadow-sm sm:p-5 md:p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight md:text-lg">
-          <ClipboardList className="h-5 w-5 text-primary" /> {t("inventory.input.title")}
-        </h2>
+    <section className="space-y-4 rounded-2xl border border-border/60 bg-card/95 p-4 shadow-sm sm:p-5 md:p-6">
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
+          <ClipboardList className="h-4 w-4 text-primary" />
+        </div>
+        <h2 className="text-base font-semibold tracking-tight md:text-lg">{t("inventory.input.title")}</h2>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[2fr_1.25fr_auto]">
+      <div className="grid gap-5 md:grid-cols-[2fr_1.25fr_auto]">
         <div className="space-y-3">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               data-testid="inventory-search-input"
               ref={searchInputRef}
               placeholder={t("inventory.input.search_placeholder")}
-              className="h-12 rounded-2xl border border-border/60 bg-background/80 pl-11 pr-4 text-sm shadow-sm placeholder:text-muted-foreground/70 transition-colors focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="h-12 rounded-xl border-2 border-border/50 bg-background pl-11 pr-4 text-sm shadow-sm placeholder:text-muted-foreground/60 transition-all duration-200 focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:shadow-md"
               value={searchTerm}
               disabled={!canSearch}
               onChange={onSearchChange}
@@ -168,7 +169,7 @@ export function InventoryInputCard({
             {isDropdownOpen && canSearch ? (
               <div
                 data-testid="inventory-search-dropdown"
-                className="absolute z-20 mt-1 w-full overflow-hidden rounded-2xl border border-border/70 bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95 duration-150 motion-reduce:animate-none"
+                className="absolute z-20 mt-1.5 w-full overflow-hidden rounded-xl border border-border/60 bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95 duration-150 motion-reduce:animate-none"
               >
                 {dropdownContent}
               </div>
@@ -217,18 +218,18 @@ export function InventoryInputCard({
                 inputMode={qtyInputMode}
                 enterKeyHint="send"
                 placeholder={t("inventory.input.qty_placeholder")}
-                className={`h-12 w-full rounded-2xl border bg-background/85 pr-20 text-lg font-semibold tabular-nums shadow-sm transition-all duration-150 focus-visible:ring-2 motion-reduce:transition-none ${qtyValidation.error ? "border-rose-500 focus-visible:border-rose-500 focus-visible:ring-rose-300" : "border-border/70 focus-visible:border-primary/40 focus-visible:ring-primary/30"}`}
+                className={`h-12 w-full rounded-xl border-2 bg-background pr-20 text-lg font-semibold tabular-nums shadow-sm transition-all duration-200 focus-visible:ring-2 focus-visible:shadow-md motion-reduce:transition-none ${qtyValidation.error ? "border-rose-400 focus-visible:border-rose-500 focus-visible:ring-rose-200" : "border-border/50 focus-visible:border-primary/50 focus-visible:ring-primary/20"}`}
                 value={qty}
                 disabled={!canSearch || !selectedItem}
                 onChange={onQtyChange}
               />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                 {formatUnit(selectedItem?.unit)}
               </span>
             </div>
             <Button
               type="submit"
-              className="h-12 w-12 shrink-0 rounded-2xl bg-primary text-primary-foreground shadow-md transition-all duration-150 hover:bg-primary/90 active:translate-y-px disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 motion-reduce:transition-none md:hidden"
+              className="h-12 w-12 shrink-0 rounded-xl bg-primary text-primary-foreground shadow-md transition-all duration-150 hover:bg-primary/90 active:translate-y-px disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 motion-reduce:transition-none md:hidden"
               disabled={!canSave || savePending}
             >
               {savePending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
@@ -254,13 +255,13 @@ export function InventoryInputCard({
           ) : null}
 
           <div className="space-y-2">
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="grid grid-cols-4 gap-2 sm:gap-2.5">
               {hotButtons.map((value) => (
                 <Button
                   key={value}
                   type="button"
                   variant="outline"
-                  className="h-11 rounded-full border border-border/80 bg-background text-sm transition-all duration-150 hover:bg-primary/10 active:scale-95 active:bg-primary active:text-primary-foreground motion-reduce:transition-none"
+                  className="h-11 rounded-xl border-border/60 bg-background text-sm font-medium tabular-nums transition-all duration-150 hover:bg-primary/8 hover:border-primary/30 active:scale-[0.97] active:bg-primary active:text-primary-foreground motion-reduce:transition-none"
                   disabled={!canSearch || !selectedItem}
                   onClick={() => onHotButtonClick(value)}
                 >
@@ -268,16 +269,15 @@ export function InventoryInputCard({
                 </Button>
               ))}
             </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">
+            <p className="text-[11px] leading-relaxed text-muted-foreground/70">
               {t("inventory.input.hot_buttons_hint")}
             </p>
-            <div className="h-px w-full bg-border" aria-hidden="true" />
           </div>
 
           <Button
             data-testid="inventory-save-btn-desktop"
             type="submit"
-            className="hidden h-12 min-h-[48px] rounded-2xl bg-primary text-primary-foreground shadow-md transition-all duration-150 hover:bg-primary/90 hover:shadow-lg active:translate-y-px focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 motion-reduce:transition-none md:flex"
+            className="hidden h-12 min-h-[48px] w-full rounded-xl bg-primary text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 hover:shadow-lg active:translate-y-px focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 motion-reduce:transition-none md:flex"
             disabled={!canSave || savePending}
           >
             {savePending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -286,9 +286,18 @@ export function InventoryInputCard({
         </form>
       </div>
 
-      <p className="min-h-[20px] text-[13px] text-muted-foreground">
-        {selectedItem ? `${t("inventory.input.selected")}: ${selectedItem.name} (${formatUnit(selectedItem.unit)})` : "\u00A0"}
-      </p>
+      <div className="flex min-h-[28px] items-center gap-2 rounded-lg bg-muted/40 px-3 py-1.5 text-[13px]">
+        {selectedItem ? (
+          <>
+            <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="text-muted-foreground">{t("inventory.input.selected")}:</span>
+            <span className="font-medium text-foreground">{selectedItem.name}</span>
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">{formatUnit(selectedItem.unit)}</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground/60">{"\u00A0"}</span>
+        )}
+      </div>
     </section>
   );
 }

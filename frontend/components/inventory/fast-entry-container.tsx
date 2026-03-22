@@ -105,10 +105,10 @@ export function FastEntryContainer(props: FastEntryContainerProps) {
 
   return (
     <>
-      <div className="grid min-w-0 w-full gap-3 md:flex-1 md:min-h-0 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-stretch">
+      <div className="grid min-w-0 w-full gap-4 md:flex-1 md:min-h-0 lg:grid-cols-[minmax(0,2fr)_minmax(340px,1fr)] lg:gap-5 lg:items-stretch">
         <div
           ref={leftColumnRef}
-          className="h-full min-h-0 flex flex-col gap-4 lg:gap-6 lg:overflow-y-auto"
+          className="h-full min-h-0 flex flex-col gap-4 lg:gap-5 lg:overflow-y-auto"
         >
           {isClosed ? (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-dashed border-border/70 bg-card/95 px-4 py-3 shadow-sm">
