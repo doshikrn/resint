@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Check, Loader2, Search, Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ type InventoryInputCardProps = {
   canSave: boolean;
 };
 
-function ChipsSection({
+const ChipsSection = memo(function ChipsSection({
   title,
   items,
   favoriteIds,
@@ -106,9 +107,9 @@ function ChipsSection({
       )}
     </div>
   );
-}
+});
 
-export function InventoryInputCard({
+export const InventoryInputCard = memo(function InventoryInputCard({
   canSearch,
   searchInputRef,
   searchTerm,
@@ -295,4 +296,4 @@ export function InventoryInputCard({
       </div>
     </section>
   );
-}
+});

@@ -76,7 +76,9 @@ export const RecentEntriesCard = memo(function RecentEntriesCard({
   useEffect(() => {
     const firstKey = groups[0]?.items[0]?.key;
     if (prevFirstKeyRef.current !== undefined && firstKey !== prevFirstKeyRef.current) {
-      scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      if ((scrollContainerRef.current?.scrollTop ?? 0) > 8) {
+        scrollContainerRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      }
     }
     prevFirstKeyRef.current = firstKey;
   }, [groups]);

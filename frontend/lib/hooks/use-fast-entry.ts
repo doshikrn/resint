@@ -31,6 +31,14 @@ import { useDraft } from "@/lib/hooks/use-draft";
 import { useEntrySubmit } from "@/lib/hooks/use-entry-submit";
 
 const SEARCH_DEBOUNCE_MS = 150;
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ru-RU", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Asia/Almaty",
+});
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -561,25 +569,32 @@ export function useFastEntry(params: UseFastEntryParams) {
     }
   }, [itemOptions?.length, isDropdownOpen, highlightedIndex]);
 
-  const frequentItems = (frequentItemsQuery.data ?? []).slice(0, 7);
-  const recentItems = (recentItemsQuery.data ?? []).slice(0, 7);
+  const frequentItems = useMemo(() => (frequentItemsQuery.data ?? []).slice(0, 7), [frequentItemsQuery.data]);
+  const recentItems = useMemo(() => (recentItemsQuery.data ?? []).slice(0, 7), [recentItemsQuery.data]);
 
   const selectedUnit = (selectedItem?.unit ?? "").toLowerCase();
   const isWeightUnit = selectedUnit === "kg" || selectedUnit === "l" || selectedUnit === "кг" || selectedUnit === "л";
   const isPiecesUnit = selectedUnit === "pcs" || selectedUnit === "шт";
   const qtyInputMode: React.HTMLAttributes<HTMLInputElement>["inputMode"] = isWeightUnit ? "decimal" : "numeric";
-  const hotButtons = isWeightUnit ? ["+0.1", "+0.5", "+1", "+2"] : ["+0.1", "+1", "+2", "+5"];
+  const hotButtons = useMemo(
+    () => (isWeightUnit ? ["+0.1", "+0.5", "+1", "+2"] : ["+0.1", "+1", "+2", "+5"]),
+    [isWeightUnit],
+  );
   const sessionProgress: InventorySessionProgress | undefined = sessionProgressQuery.data;
   const displayedSessionProgress = useMemo(() => {
+    let myLocalCount = 0;
+    let latestLocalActivity: string | null = null;
+    for (const row of entriesSnapshot) {
+      if (row.updated_by_user.username === currentUser?.username) {
+        myLocalCount += 1;
+      }
+      if (latestLocalActivity === null || row.updated_at > latestLocalActivity) {
+        latestLocalActivity = row.updated_at;
+      }
+    }
+
     const totalCountedItems = Math.max(sessionProgress?.total_counted_items ?? 0, entriesSnapshot.length);
-    const myCountedItems = Math.max(
-      sessionProgress?.my_counted_items ?? 0,
-      entriesSnapshot.filter((row) => row.updated_by_user.username === currentUser?.username).length,
-    );
-    const latestLocalActivity = entriesSnapshot.reduce<string | null>((latest, row) => {
-      if (!latest) return row.updated_at;
-      return new Date(row.updated_at).getTime() > new Date(latest).getTime() ? row.updated_at : latest;
-    }, null);
+    const myCountedItems = Math.max(sessionProgress?.my_counted_items ?? 0, myLocalCount);
     const lastActivityAt = latestLocalActivity ?? sessionProgress?.last_activity_at ?? null;
 
     if (!session?.id) {
@@ -987,14 +1002,7 @@ export function useFastEntry(params: UseFastEntryParams) {
   const formatDateTime = useCallback((value: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return new Intl.DateTimeFormat("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "Asia/Almaty",
-    }).format(date);
+    return DATE_TIME_FORMATTER.format(date);
   }, []);
 
   const formatRelativeGroupLabel = useCallback(

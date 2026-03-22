@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { Download, Loader2 } from "lucide-react";
 
@@ -91,6 +91,52 @@ export function FastEntryContainer(props: FastEntryContainerProps) {
     selectedWarehouseId !== null &&
     !session &&
     !activeSessionLoading;
+  const submitEntry = fe.submitEntry;
+
+  const searchDropdown = useMemo(
+    () => (
+      <InventorySearchDropdown
+        isLoading={
+          (fe.debouncedSearchTerm.trim().length > 0
+            ? fe.catalogLoading && !fe.catalogItems?.length
+            : false) ||
+          false
+        }
+        items={fe.itemOptions}
+        favoriteIds={fe.favoriteIds}
+        entriesByItemId={fe.entriesSnapshotByItemId}
+        highlightedIndex={fe.highlightedIndex}
+        hasSearchTerm={fe.debouncedSearchTerm.trim().length > 0}
+        searchTerm={fe.searchTerm}
+        onChoose={fe.chooseItem}
+        onToggleFavorite={fe.toggleFavorite}
+        onHover={fe.handleDropdownHover}
+        onQuickCreate={fe.handleQuickCreateItem}
+        createPending={fe.quickCreatePending}
+        unitPickerForceOpen={fe.quickCreateUnitPickerOpen}
+      />
+    ),
+    [
+      fe.catalogItems,
+      fe.catalogLoading,
+      fe.chooseItem,
+      fe.debouncedSearchTerm,
+      fe.entriesSnapshotByItemId,
+      fe.favoriteIds,
+      fe.handleDropdownHover,
+      fe.handleQuickCreateItem,
+      fe.highlightedIndex,
+      fe.itemOptions,
+      fe.quickCreatePending,
+      fe.quickCreateUnitPickerOpen,
+      fe.searchTerm,
+      fe.toggleFavorite,
+    ],
+  );
+
+  const handleSubmitEntry = useCallback(() => {
+    void submitEntry();
+  }, [submitEntry]);
 
   if (showRevisionNotStarted) {
     return (
@@ -163,28 +209,7 @@ export function FastEntryContainer(props: FastEntryContainerProps) {
             onSearchBlur={fe.handleSearchInputBlur}
             onSearchKeyDown={fe.handleSearchKeyDown}
             isDropdownOpen={fe.isDropdownOpen}
-            dropdownContent={
-              <InventorySearchDropdown
-                isLoading={
-                  (fe.debouncedSearchTerm.trim().length > 0
-                    ? fe.catalogLoading && !fe.catalogItems?.length
-                    : false) ||
-                  false
-                }
-                items={fe.itemOptions}
-                favoriteIds={fe.favoriteIds}
-                entriesByItemId={fe.entriesSnapshotByItemId}
-                highlightedIndex={fe.highlightedIndex}
-                hasSearchTerm={fe.debouncedSearchTerm.trim().length > 0}
-                searchTerm={fe.searchTerm}
-                onChoose={fe.chooseItem}
-                onToggleFavorite={fe.toggleFavorite}
-                onHover={fe.handleDropdownHover}
-                onQuickCreate={fe.handleQuickCreateItem}
-                createPending={fe.quickCreatePending}
-                unitPickerForceOpen={fe.quickCreateUnitPickerOpen}
-              />
-            }
+            dropdownContent={searchDropdown}
             showQuickChips={Boolean(canSearch && selectedWarehouseId)}
             favoriteItems={fe.favoriteItems}
             frequentItems={fe.frequentItems}
@@ -197,9 +222,7 @@ export function FastEntryContainer(props: FastEntryContainerProps) {
             qtyInputMode={fe.qtyInputMode}
             qty={fe.qty}
             onQtyChange={fe.handleQtyInputChange}
-            onSubmitEntry={() => {
-              void fe.submitEntry();
-            }}
+            onSubmitEntry={handleSubmitEntry}
             selectedItem={fe.selectedItem}
             qtyValidation={fe.qtyValidation}
             hotButtons={fe.hotButtons}

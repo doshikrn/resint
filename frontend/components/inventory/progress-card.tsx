@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { BarChart3, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLanguage } from "@/lib/i18n/language-provider";
@@ -9,7 +10,7 @@ type ProgressCardProps = {
   formatDateTime: (value: string) => string;
 };
 
-export function ProgressCard({
+export const ProgressCard = memo(function ProgressCard({
   sessionProgressLoading,
   sessionProgress,
   formatDateTime,
@@ -70,4 +71,4 @@ export function ProgressCard({
       )}
     </section>
   );
-}
+});
