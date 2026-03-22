@@ -141,7 +141,7 @@ export function InventoryInputCard({
   const { t } = useLanguage();
 
   return (
-    <section className="space-y-4 rounded-2xl border border-border/60 bg-card/95 p-4 shadow-sm sm:p-5 md:p-6">
+    <section className="space-y-4 rounded-2xl border-2 border-primary/20 bg-card p-4 shadow-md ring-1 ring-primary/5 sm:p-5 md:p-6">
       <div className="flex items-center gap-2.5">
         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
           <ClipboardList className="h-4 w-4 text-primary" />
@@ -152,12 +152,12 @@ export function InventoryInputCard({
       <div className="grid gap-5 md:grid-cols-[2fr_1.25fr_auto]">
         <div className="space-y-3">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-primary/60" />
             <Input
               data-testid="inventory-search-input"
               ref={searchInputRef}
               placeholder={t("inventory.input.search_placeholder")}
-              className="h-12 rounded-xl border-2 border-border/50 bg-background pl-11 pr-4 text-sm shadow-sm placeholder:text-muted-foreground/60 transition-all duration-200 focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:shadow-md"
+              className="h-12 rounded-xl border-2 border-primary/25 bg-background pl-11 pr-4 text-sm shadow-sm placeholder:text-muted-foreground/50 transition-all duration-200 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:shadow-md"
               value={searchTerm}
               disabled={!canSearch}
               onChange={onSearchChange}
@@ -229,7 +229,7 @@ export function InventoryInputCard({
             </div>
             <Button
               type="submit"
-              className="h-12 w-12 shrink-0 rounded-xl bg-primary text-primary-foreground shadow-md transition-all duration-150 hover:bg-primary/90 active:translate-y-px disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 motion-reduce:transition-none md:hidden"
+              className="h-12 w-12 shrink-0 rounded-xl bg-primary text-primary-foreground shadow-lg transition-all duration-150 hover:bg-primary/90 active:translate-y-px disabled:bg-muted/60 disabled:text-muted-foreground/50 disabled:shadow-none disabled:opacity-100 motion-reduce:transition-none md:hidden"
               disabled={!canSave || savePending}
             >
               {savePending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
@@ -239,17 +239,17 @@ export function InventoryInputCard({
           {qtyValidation.wasRounded &&
           qtyValidation.roundedFrom !== null &&
           qtyValidation.roundedTo !== null ? (
-            <p className="rounded-lg bg-amber-500/10 px-2 py-1 text-xs text-amber-700">
+            <p className="rounded-lg bg-amber-500/8 px-2 py-1 text-[11px] text-amber-600/90">
               округлено: {qtyValidation.roundedFrom} → {qtyValidation.roundedTo}
             </p>
           ) : null}
           {qtyValidation.error ? (
-            <p className="rounded-lg bg-rose-500/10 px-2 py-1 text-xs text-rose-700">
+            <p className="rounded-lg bg-rose-500/8 px-2 py-1 text-[11px] text-rose-600">
               {qtyValidation.error}
             </p>
           ) : null}
           {qtyValidation.softWarning ? (
-            <p className="rounded-lg bg-amber-500/10 px-2 py-1 text-xs text-amber-700">
+            <p className="rounded-lg bg-amber-500/8 px-2 py-1 text-[11px] text-amber-600/90">
               {qtyValidation.softWarning}
             </p>
           ) : null}
@@ -277,7 +277,7 @@ export function InventoryInputCard({
           <Button
             data-testid="inventory-save-btn-desktop"
             type="submit"
-            className="hidden h-12 min-h-[48px] w-full rounded-xl bg-primary text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 hover:shadow-lg active:translate-y-px focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 motion-reduce:transition-none md:flex"
+            className="hidden h-12 min-h-[48px] w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-lg transition-all duration-200 hover:bg-primary/90 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:translate-y-0 disabled:bg-muted/60 disabled:text-muted-foreground/50 disabled:shadow-none disabled:opacity-100 motion-reduce:transition-none md:flex"
             disabled={!canSave || savePending}
           >
             {savePending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

@@ -25,11 +25,11 @@ export function ProgressCard({
   return (
     <section
       data-testid="inventory-progress-card"
-      className="rounded-2xl border border-border/60 bg-card/95 p-4 shadow-sm md:p-5"
+      className="rounded-2xl border border-border/50 bg-card/80 p-4 md:p-5"
     >
       <div className="flex items-center gap-2 mb-3">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-          <BarChart3 className="h-3.5 w-3.5 text-primary" />
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted">
+          <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
         <h2 className="text-sm font-semibold tracking-wide">{t("inventory.progress.title")}</h2>
       </div>
@@ -42,21 +42,21 @@ export function ProgressCard({
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-border/40 bg-background/60 p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Hash className="h-3 w-3 text-muted-foreground/70" />
-                <span className="text-[11px] font-medium text-muted-foreground">{t("inventory.progress.items_counted")}</span>
+            <div className="rounded-xl border border-border/40 bg-background/50 p-3">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Hash className="h-3 w-3 text-muted-foreground/60" />
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{t("inventory.progress.items_counted")}</span>
               </div>
-              <p data-testid="inventory-progress-total" className="text-2xl font-bold tabular-nums tracking-tight text-foreground">
+              <p data-testid="inventory-progress-total" className="text-3xl font-extrabold tabular-nums tracking-tighter text-foreground">
                 {enteredCount}
               </p>
             </div>
-            <div className="rounded-xl border border-border/40 bg-background/60 p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <User className="h-3 w-3 text-muted-foreground/70" />
-                <span className="text-[11px] font-medium text-muted-foreground">{t("inventory.progress.by_you")}</span>
+            <div className="rounded-xl border border-border/40 bg-background/50 p-3">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <User className="h-3 w-3 text-muted-foreground/60" />
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{t("inventory.progress.by_you")}</span>
               </div>
-              <p data-testid="inventory-progress-mine" className="text-2xl font-bold tabular-nums tracking-tight text-foreground">
+              <p data-testid="inventory-progress-mine" className="text-3xl font-extrabold tabular-nums tracking-tighter text-foreground">
                 {enteredByUserCount}
               </p>
             </div>

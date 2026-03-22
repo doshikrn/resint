@@ -84,9 +84,9 @@ export const RecentEntriesCard = memo(function RecentEntriesCard({
   return (
     <section
       data-testid="inventory-recent-block"
-      className="flex h-full min-h-0 max-h-[60dvh] flex-col rounded-2xl border border-border/60 bg-card/95 shadow-sm lg:max-h-none"
+      className="flex h-full min-h-0 max-h-[60dvh] flex-col rounded-2xl border border-border/50 bg-card/80 shadow-none lg:max-h-none"
     >
-      <div className="shrink-0 border-b border-border/50 px-4 py-3 md:px-5 md:py-3.5">
+      <div className="shrink-0 border-b border-border/40 px-4 py-3 md:px-5 md:py-3.5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="inline-flex items-center gap-2 text-sm font-semibold tracking-wide">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted">
