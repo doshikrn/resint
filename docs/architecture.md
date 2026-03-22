@@ -39,7 +39,7 @@ inventory-app/
 │   │   ├── core/          # config, auth, roles, errors, logging, rate-limit
 │   │   ├── db/            # SQLAlchemy engine/session, Base, base.py (all-import)
 │   │   ├── models/        # ORM models (18 files)
-│   │   ├── routers/       # HTTP route handlers (8 files)
+│   │   ├── routers/       # HTTP route handlers (inventory/ package + 7 files)
 │   │   ├── schemas/       # Pydantic v2 I/O schemas
 │   │   ├── services/      # business logic (audit, export, export_repository)
 │   │   └── templates/     # (Jinja2 templates, currently unused)
@@ -54,13 +54,14 @@ inventory-app/
 ├── frontend/              # Next.js 14.2, TypeScript, Tailwind CSS
 │   ├── app/               # App Router pages
 │   ├── components/        # shared React components
-│   ├── lib/               # API client, hooks, i18n, offline utilities
+│   ├── lib/               # API client, hooks, search engine, i18n, offline utilities
 │   ├── public/brand/      # PNG brand assets
 │   ├── middleware.ts       # auth guard
 │   ├── next.config.mjs
 │   └── package.json
 └── docs/
-    └── architecture.md    # ← этот файл
+    ├── architecture.md    # ← этот файл
+    └── adr/               # Architecture Decision Records (001–004)
 ```
 
 ---
@@ -127,12 +128,30 @@ OpenAPI: `BearerAuth` (JWT) зарегистрирован как `securitySchem
 | `auth.py` | `/auth` | auth |
 | `warehouses.py` | `/warehouses` | warehouses |
 | `items.py` | `/items` | items |
-| `inventory.py` | `/inventory` | inventory |
+| `inventory/` | `/inventory` | inventory (package — см. §4.2.1) |
 | `zones.py` | `/zones` | zones |
 | `stations.py` | `/stations` | stations |
 | `users.py` | `/users` | users |
 | `health.py` | `/health` | health |
 | `admin_backups.py` | `/admin/backups` | backups |
+
+#### 4.2.1 Inventory router — domain-focused package
+
+Монолитный `inventory.py` (3 297 LOC, 75 функций) разбит на пакет `routers/inventory/`:
+
+| Модуль | LOC | Кол-во routes | Домен |
+|--------|-----|:---:|-------|
+| `_helpers.py` | ~1 030 | 0 | 48 общих helper-функций (auth, validation, events, session lifecycle) |
+| `sessions.py` | ~660 | 10 | Жизненный цикл сессий (create, close, reopen, delete) |
+| `entries.py` | ~660 | 6 | Entry CRUD (add, patch, delete, recent) |
+| `audit.py` | ~200 | 5 | Аудит-лог и верификация |
+| `progress.py` | ~170 | 3 | Прогресс по зонам |
+| `reports.py` | ~610 | 6 | Отчёты, экспорт, diff |
+| `__init__.py` | ~30 | 0 | Сборка sub-routers в один `router` |
+
+Импорт в `main.py` не изменился: `from app.routers.inventory import router`.
+
+> **ADR:** `docs/adr/001-inventory-router-package-split.md`
 
 ### 4.3 Эндпоинты — подробно
 
@@ -166,7 +185,7 @@ OpenAPI: `BearerAuth` (JWT) зарегистрирован как `securitySchem
 | GET | `/items/recent` | warehouse | Недавние товары (по текущей сессии) |
 | GET | `/items/frequent` | warehouse | Частые товары (по периоду, default 30d) |
 | GET | `/items/search` | all | Поиск: name + product_code + aliases |
-| POST | `/items` | all (w/h bound) | Создать товар |
+| POST | `/items` | souschef+ | Создать товар (role check: `can_manage_catalog`) |
 | POST | `/items/import` | souschef+ | Импорт из CSV/XLSX (dry_run по умолчанию) |
 | GET | `/items/export` | all | Экспорт в CSV/XLSX |
 | PATCH | `/items/{id}` | souschef+ | Обновить товар |
@@ -463,23 +482,25 @@ Playwright (e2e tests)
 | Хук | Описание |
 |-----|----------|
 | `useCurrentUser` | GET `/users/me`, кэш в localStorage, сброс при 401 |
-| `useHeartbeat` | POST `/users/heartbeat` каждые 30 с |
-| `useOnlineUsers` | GET `/users/online` каждые 15 с |
+| `usePresence` | Heartbeat + online-users в одном хуке; заменил отдельные `useHeartbeat` и `useOnlineUsers` |
 | `useMaintenanceMode` | GET `/health/ready` каждые 30 с |
 | `useSuccessGlow` | Анимация glow при сохранении |
 | `useFastEntry` | Координатор fast-entry: агрегирует подхуки, TanStack Query, optimistic journal, debounced search state (`150ms`), single-pass progress derivation, memoized hot lists, auto-purge подтверждённых offline-элементов |
 | `useFavorites` | Избранное по складу, long-press логика, localStorage |
 | `useOfflineSync` | Онлайн/оффлайн-детекция, backend probe, sync/retry/conflict queue |
-| `useCatalogFetch` | Раннее восстановление каталога из IndexedDB, ETag refresh, ranked in-memory search index с `startsWith`/`includes` приоритетом, folded Cyrillic matching и лёгким fuzzy-prefix matching |
+| `useCatalogFetch` | Раннее восстановление каталога из IndexedDB, ETag refresh, in-memory search через выделенный pure-модуль `lib/search/catalog-search.ts` |
 | `useDraft` | Восстановление и сохранение черновика fast-entry |
 | `useEntrySubmit` | Единая write-pipeline: idempotency, optimistic snapshot/recent-events, enqueue fallback |
-| `useAppReady` | Заглушка готовности приложения |
+
+Общие типы fast-entry семейства хуков (`CurrentUserLike`, `PendingQtyConfirm`, `QtyValidation`, `RecentJournalEntry`, `RecentJournalGroup`, `UseFastEntryParams`) централизованы в `lib/hooks/fast-entry-types.ts`.
+
+> **ADR:** `docs/adr/002-search-engine-extraction.md`, `docs/adr/003-shared-types-and-dead-hook-cleanup.md`
 
 ### 7.5.1 Fast-entry screen: актуальные инженерные акценты
 
 - Экран ревизии намеренно собран вокруг одного hot path: `search -> select item -> enter qty -> save`, где secondary-блоки (progress, recent journal, reports) визуально и вычислительно отодвинуты от первичного ввода.
 - Поиск не опирается на backend roundtrip: после warm restore каталога клиент ищет по локальному индексу и возвращает top-20 результатов.
-- Ranking поиска: `startsWith` выше `includes`; далее folded-match для кириллицы (`ё/э -> е`, `й -> и`, мягкий/твёрдый знак игнорируются), затем ограниченный fuzzy-prefix distance. Это было добавлено после реальных кейсов вроде `ха` / `хэшбраун`.
+- Ranking поиска: `startsWith` выше `includes`; далее folded-match для кириллицы (`ё/э -> е`, `й -> и`, мягкий/твёрдый знак игнорируются), затем ограниченный fuzzy-prefix distance. Это было добавлено после реальных кейсов вроде `ха` / `хэшбраун`. Алгоритм вынесен в pure-модуль `lib/search/catalog-search.ts` (≈170 LOC, zero React deps) и может быть протестирован/переиспользован без React.
 - На мобильных длинных сессиях основной риск был не в network latency, а в повторных вычислениях и избыточных rerender. Текущая стратегия: memoized derived-lists (`recentItems`, `frequentItems`, hot-buttons), memoized UI blocks, один проход по snapshot для progress, отсутствие лишнего snapshot refetch после каждого успешного save.
 - `recent-events` остаётся источником подтверждения optimistic/offline записей; queue cleanup происходит только после server confirmation, а не по факту локального submit-success.
 
@@ -597,9 +618,10 @@ Backend (`tests/`, pytest):
 - `test_inventory_idempotency.py` — дублирующие запросы
 - `test_inventory_negative.py` — граничные случаи
 - `test_inventory_export.py` — контракт экспорта, включая сохранение session-only items в XLSX и сохранение footer-блока бухгалтерского шаблона
+- `test_auth_catalog_contract.py` — контракт auth-границ на каталоге (cook ≠ create, souschef ✓, unauthenticated ✗)
 - `test_items_catalog_management.py`, `test_items_import_export.py`, etc.
 - `test_postgres_contract.py` — контракт с PostgreSQL
-- 21 файл тестов в общей сложности
+- 28 файлов тестов, **124 теста** в общей сложности
 
 Frontend (`tests/`, Playwright):
 - E2E тесты через `playwright.config.ts`
@@ -654,7 +676,18 @@ clsx + tailwind-merge
 | `inventory_zone_progress` | модель заведена, но population-логика в роутере inventory |
 | PWA / Service Worker | sw-registrar подключён, но полноценный `manifest.ts` только базовый |
 
-### 12.1 Кодовые ориентиры для внешнего архитектора
+### 12.1 Architecture Decision Records (ADR)
+
+Принятые архитектурные решения зафиксированы в `docs/adr/`:
+
+| ADR | Тема |
+|-----|------|
+| 001 | Разбиение `inventory.py` на domain-focused package |
+| 002 | Выделение search engine в pure-модуль |
+| 003 | Централизация shared-типов fast-entry; удаление мёртвых хуков |
+| 004 | Auth hardening: role check на `create_item` |
+
+### 12.2 Кодовые ориентиры для внешнего архитектора
 
 Ниже — минимальный маршрут чтения кода, если нужно быстро понять систему без полного обхода репозитория.
 
@@ -662,14 +695,16 @@ clsx + tailwind-merge
 |--------|------|--------------|
 | API bootstrap | `backend/app/main.py` | middleware chain, router registration, global exception handlers |
 | Auth / security | `backend/app/core/deps.py`, `backend/app/core/security.py`, `backend/app/routers/auth.py` | JWT, refresh rotation, active/deleted user checks |
-| Inventory API | `backend/app/routers/inventory.py` | session lifecycle, idempotent POST, optimistic locking, snapshots, progress |
+| Inventory API | `backend/app/routers/inventory/` (package) | `sessions.py` — lifecycle; `entries.py` — idempotent POST, optimistic locking; `audit.py`; `progress.py`; `reports.py`; `_helpers.py` — shared utils |
 | Export / XLSX | `backend/app/services/export.py`, `backend/app/services/export_repository.py` | accounting export, footer-marker-aware trimming, active-catalog baseline + session-entry overlay, fallback rows/logging |
 | Frontend shell | `frontend/components/layout/app-shell.tsx` | protected layout, role-aware navigation, simplified topbar branding, mobile sheet navigation |
 | Inventory screen | `frontend/app/inventory/page.tsx`, `frontend/components/inventory/fast-entry-container.tsx` | page composition, tabs, fast-entry wiring, primary input-first UX structure |
 | Fast-entry coordinator | `frontend/lib/hooks/use-fast-entry.ts` | TanStack Query orchestration, debounced search, recent journal derivation, auto-purge confirmed queue, rerender-sensitive derived state |
 | Fast-entry write path | `frontend/lib/hooks/use-entry-submit.ts` | optimistic updates, enqueue fallback, mutation typing |
 | Offline sync | `frontend/lib/hooks/use-offline-sync.ts` | backend probe, retry policy, synced-item retention until confirmation |
-| Catalog/draft/favorites | `frontend/lib/hooks/use-catalog-fetch.ts`, `frontend/lib/hooks/use-draft.ts`, `frontend/lib/hooks/use-favorites.ts` | early cache restore, ranked/folded local search, draft restore, local favorites |
+| Search engine | `frontend/lib/search/catalog-search.ts` | pure search: normalise, fold Cyrillic, fuzzy prefix distance, scoring — zero React deps |
+| Catalog/draft/favorites | `frontend/lib/hooks/use-catalog-fetch.ts`, `frontend/lib/hooks/use-draft.ts`, `frontend/lib/hooks/use-favorites.ts` | early cache restore, local search via `catalog-search.ts`, draft restore, local favorites |
+| Shared hook types | `frontend/lib/hooks/fast-entry-types.ts` | `CurrentUserLike`, `PendingQtyConfirm`, `QtyValidation`, `RecentJournalEntry`, `UseFastEntryParams` |
 | Client API layer | `frontend/lib/api/inventory.ts`, `frontend/lib/api/request.ts` | request helpers, `entries-snapshot` path, health probe, auth proxy semantics |
 | i18n | `frontend/lib/i18n/index.ts`, `frontend/lib/i18n/language-provider.tsx` | `DictionaryKeys`, typed translator, language persistence |
 | Regression coverage | `backend/tests/test_inventory_*.py`, `frontend/tests/` | behavioural contracts around sync, idempotency, optimistic lock, exports |
