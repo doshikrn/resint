@@ -30,6 +30,8 @@ import { useCatalogFetch } from "@/lib/hooks/use-catalog-fetch";
 import { useDraft } from "@/lib/hooks/use-draft";
 import { useEntrySubmit } from "@/lib/hooks/use-entry-submit";
 
+const SEARCH_DEBOUNCE_MS = 150;
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 type PendingQtyConfirm = {
@@ -397,7 +399,7 @@ export function useFastEntry(params: UseFastEntryParams) {
   useEffect(() => {
     const timeout = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm.trim());
-    }, 150);
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timeout);
   }, [searchTerm]);
 

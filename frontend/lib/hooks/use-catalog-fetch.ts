@@ -10,6 +10,125 @@ import {
 import { loadCatalogCache, saveCatalogCache } from "@/lib/inventory-offline-cache";
 import type { DictionaryKeys } from "@/lib/i18n";
 
+const SEARCH_RESULT_LIMIT = 20;
+const FUZZY_PREFIX_MAX_DISTANCE = 1;
+
+function normalizeSearchValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zа-я0-9]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function foldSearchValue(value: string): string {
+  return normalizeSearchValue(value)
+    .replace(/[ёэ]/g, "е")
+    .replace(/й/g, "и")
+    .replace(/[ъь]/g, "");
+}
+
+function splitSearchWords(value: string): string[] {
+  return value.split(" ").filter(Boolean);
+}
+
+function boundedPrefixDistance(query: string, target: string, maxDistance: number): number {
+  if (!query || !target) {
+    return query === target ? 0 : maxDistance + 1;
+  }
+
+  const prefix = target.slice(0, Math.max(query.length, Math.min(target.length, query.length + maxDistance)));
+  const previous = Array.from({ length: prefix.length + 1 }, (_, index) => index);
+
+  for (let row = 1; row <= query.length; row += 1) {
+    const current = [row];
+    let rowMin = current[0];
+
+    for (let column = 1; column <= prefix.length; column += 1) {
+      const substitutionCost = query[row - 1] === prefix[column - 1] ? 0 : 1;
+      const next = Math.min(
+        previous[column] + 1,
+        current[column - 1] + 1,
+        previous[column - 1] + substitutionCost,
+      );
+      current.push(next);
+      rowMin = Math.min(rowMin, next);
+    }
+
+    if (rowMin > maxDistance) {
+      return maxDistance + 1;
+    }
+
+    for (let column = 0; column < current.length; column += 1) {
+      previous[column] = current[column];
+    }
+  }
+
+  return Math.min(...previous);
+}
+
+function matchesFuzzyToken(token: string, words: string[]): boolean {
+  if (!token) {
+    return true;
+  }
+
+  for (const word of words) {
+    if (word.includes(token)) {
+      return true;
+    }
+
+    if (Math.abs(word.length - token.length) > FUZZY_PREFIX_MAX_DISTANCE && word.length < token.length) {
+      continue;
+    }
+
+    if (boundedPrefixDistance(token, word, FUZZY_PREFIX_MAX_DISTANCE) <= FUZZY_PREFIX_MAX_DISTANCE) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getSearchScore(params: {
+  normalizedQuery: string;
+  normalizedTokens: string[];
+  foldedQuery: string;
+  foldedTokens: string[];
+  normalizedName: string;
+  normalizedHaystack: string;
+  foldedName: string;
+  foldedHaystack: string;
+  foldedWords: string[];
+}): number | null {
+  const {
+    normalizedQuery,
+    normalizedTokens,
+    foldedQuery,
+    foldedTokens,
+    normalizedName,
+    normalizedHaystack,
+    foldedName,
+    foldedHaystack,
+    foldedWords,
+  } = params;
+
+  if (normalizedName.startsWith(normalizedQuery)) return 0;
+  if (normalizedHaystack.startsWith(normalizedQuery)) return 1;
+  if (normalizedName.includes(normalizedQuery)) return 2;
+  if (normalizedTokens.every((token) => normalizedHaystack.includes(token))) return 3;
+
+  if (foldedName.startsWith(foldedQuery)) return 4;
+  if (foldedHaystack.startsWith(foldedQuery)) return 5;
+  if (foldedName.includes(foldedQuery)) return 6;
+  if (foldedTokens.every((token) => foldedHaystack.includes(token))) return 7;
+  if (foldedTokens.every((token) => matchesFuzzyToken(token, foldedWords))) return 8;
+
+  return null;
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────
 
 /**
@@ -184,26 +303,60 @@ export function useCatalogFetch(params: {
     const items = (catalogItems ?? []).filter((item: InventoryCatalogItem) => item.is_active);
     return items.map((item: InventoryCatalogItem) => {
       const aliases = Array.isArray(item.aliases) ? item.aliases : [];
-      const haystack = `${item.name} ${item.product_code ?? ""} ${aliases.join(" ")}`.toLowerCase();
-      return { item, haystack };
+      const haystackSource = `${item.name} ${item.product_code ?? ""} ${aliases.join(" ")}`;
+      const normalizedName = normalizeSearchValue(item.name);
+      const normalizedHaystack = normalizeSearchValue(haystackSource);
+      const foldedName = foldSearchValue(item.name);
+      const foldedHaystack = foldSearchValue(haystackSource);
+
+      return {
+        item,
+        normalizedName,
+        normalizedHaystack,
+        foldedName,
+        foldedHaystack,
+        foldedWords: splitSearchWords(foldedHaystack),
+      };
     });
   }, [catalogItems]);
 
   const searchResults = useMemo(() => {
-    const raw = debouncedSearchTerm.trim().toLowerCase();
-    if (!raw) return [] as ItemSearchResult[];
+    const normalizedQuery = normalizeSearchValue(debouncedSearchTerm);
+    if (!normalizedQuery) return [] as ItemSearchResult[];
 
-    const tokens = raw.split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return [] as ItemSearchResult[];
+    const normalizedTokens = splitSearchWords(normalizedQuery);
+    if (normalizedTokens.length === 0) return [] as ItemSearchResult[];
 
-    const results: ItemSearchResult[] = [];
+    const foldedQuery = foldSearchValue(debouncedSearchTerm);
+    const foldedTokens = splitSearchWords(foldedQuery);
+    const rankedResults: Array<{ item: ItemSearchResult; score: number }> = [];
+
     for (const row of catalogSearchIndex) {
-      if (tokens.every((token) => row.haystack.includes(token))) {
-        results.push(row.item);
-        if (results.length >= 20) break;
+      const score = getSearchScore({
+        normalizedQuery,
+        normalizedTokens,
+        foldedQuery,
+        foldedTokens,
+        normalizedName: row.normalizedName,
+        normalizedHaystack: row.normalizedHaystack,
+        foldedName: row.foldedName,
+        foldedHaystack: row.foldedHaystack,
+        foldedWords: row.foldedWords,
+      });
+
+      if (score !== null) {
+        rankedResults.push({ item: row.item, score });
       }
     }
-    return results;
+
+    rankedResults.sort((left, right) => {
+      if (left.score !== right.score) {
+        return left.score - right.score;
+      }
+      return left.item.name.localeCompare(right.item.name, "ru");
+    });
+
+    return rankedResults.slice(0, SEARCH_RESULT_LIMIT).map((entry) => entry.item);
   }, [catalogSearchIndex, debouncedSearchTerm]);
 
   return {
