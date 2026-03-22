@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+import logging
 
 from sqlalchemy import and_, case, func, inspect
 from sqlalchemy.orm import Session, aliased
@@ -17,6 +18,8 @@ from app.models.station import Station
 from app.models.user import User
 from app.models.warehouse import Warehouse
 from app.models.zone import Zone
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -227,20 +230,12 @@ def fetch_session_catalog_export_rows(
         zone_name=str(meta_row.zone_name or ""),
     )
 
-    rows = (
+    catalog_rows = (
         db.query(
             Item.id.label("item_id"),
             Item.product_code.label("product_code"),
             Item.name.label("item_name"),
             Item.unit.label("unit"),
-            InventoryEntry.quantity.label("qty"),
-        )
-        .outerjoin(
-            InventoryEntry,
-            and_(
-                InventoryEntry.item_id == Item.id,
-                InventoryEntry.session_id == session_id,
-            ),
         )
         .filter(
             Item.warehouse_id == int(meta_row.warehouse_id),
@@ -250,15 +245,61 @@ def fetch_session_catalog_export_rows(
         .all()
     )
 
+    session_entry_rows = (
+        db.query(
+            Item.id.label("item_id"),
+            Item.product_code.label("product_code"),
+            Item.name.label("item_name"),
+            Item.unit.label("unit"),
+            InventoryEntry.quantity.label("qty"),
+        )
+        .join(Item, Item.id == InventoryEntry.item_id)
+        .filter(InventoryEntry.session_id == session_id)
+        .order_by(Item.product_code.asc(), Item.name.asc(), Item.id.asc())
+        .all()
+    )
+
+    qty_by_item_id: dict[int, Decimal] = {}
+    fallback_rows: list[SessionCatalogExportRow] = []
+    catalog_item_ids = {int(row.item_id) for row in catalog_rows}
+
+    for row in session_entry_rows:
+        item_id = int(row.item_id)
+        qty_by_item_id[item_id] = Decimal(str(row.qty))
+        if item_id in catalog_item_ids:
+            continue
+        fallback_rows.append(
+            SessionCatalogExportRow(
+                item_id=item_id,
+                product_code=(str(row.product_code) if row.product_code else ""),
+                name=str(row.item_name or ""),
+                unit=str(row.unit or ""),
+                qty=Decimal(str(row.qty)),
+            )
+        )
+
     prepared_rows = [
         SessionCatalogExportRow(
             item_id=int(row.item_id),
             product_code=(str(row.product_code) if row.product_code else ""),
             name=str(row.item_name or ""),
             unit=str(row.unit or ""),
-            qty=(None if row.qty is None else Decimal(str(row.qty))),
+            qty=qty_by_item_id.get(int(row.item_id)),
         )
-        for row in rows
+        for row in catalog_rows
     ]
+
+    if fallback_rows:
+        fallback_rows.sort(key=lambda row: (row.product_code.lower(), row.name.lower(), row.item_id))
+        log.error(
+            "inventory_export_xlsx_catalog_gap",
+            extra={
+                "session_id": session_id,
+                "missing_item_ids": [row.item_id for row in fallback_rows],
+                "missing_item_names": [row.name for row in fallback_rows],
+                "fallback_count": len(fallback_rows),
+            },
+        )
+        prepared_rows.extend(fallback_rows)
 
     return meta, prepared_rows

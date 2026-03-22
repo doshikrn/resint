@@ -615,6 +615,74 @@ def test_export_xlsx_includes_all_catalog_items_and_dash_for_missing_qty(
     assert values_by_name["Unmeasured Item"]["code"] == "12002"
 
 
+def test_export_xlsx_keeps_session_item_even_if_item_is_inactive(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+    db_session,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+
+    item_response = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "12003",
+            "name": "Лист лайма",
+            "unit": "pcs",
+            "warehouse_id": warehouse.id,
+            "step": 1.0,
+        },
+    )
+    assert item_response.status_code == 200
+    item_id = item_response.json()["id"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 4, "mode": "set"},
+    )
+    assert add.status_code == 200
+
+    item = db_session.query(Item).filter(Item.id == item_id).first()
+    assert item is not None
+    item.is_active = False
+    db_session.add(item)
+    db_session.commit()
+
+    export = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert export.status_code == 200
+
+    workbook = load_workbook(filename=BytesIO(export.content), data_only=True)
+    goods_sheet = workbook["Товары"]
+
+    values_by_name = {}
+    for row_index in range(8, goods_sheet.max_row + 1):
+        item_name = goods_sheet.cell(row=row_index, column=2).value
+        if item_name:
+            values_by_name[str(item_name)] = {
+                "code": goods_sheet.cell(row=row_index, column=1).value,
+                "unit": goods_sheet.cell(row=row_index, column=3).value,
+                "qty": goods_sheet.cell(row=row_index, column=4).value,
+            }
+
+    assert "Лист лайма" in values_by_name
+    assert values_by_name["Лист лайма"]["code"] == "12003"
+    assert values_by_name["Лист лайма"]["qty"] == 4
+
+
 def test_export_csv_keeps_russian_names_utf8(
     client,
     auth_headers,
