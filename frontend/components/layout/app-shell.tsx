@@ -216,34 +216,6 @@ function BrandIdentity() {
   );
 }
 
-function HeaderWordmark() {
-  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
-
-  return (
-    <div className="flex select-none items-center gap-3 leading-none">
-      {!logoLoadFailed ? (
-        <div className="h-9 w-[90px] overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={BRAND_LOGO_SRC}
-            alt={BRAND_NAME}
-            className="h-full w-full scale-[2.3] object-contain object-center"
-            onError={() => setLogoLoadFailed(true)}
-          />
-        </div>
-      ) : null}
-      <div className="flex flex-col items-start">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-foreground/70">
-          ZERE
-        </p>
-        <p className="-mt-0.5 text-[9px] font-normal tracking-wide text-muted-foreground">
-          Restaurant
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -438,17 +410,14 @@ export function AppShell({ children }: AppShellProps) {
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-foreground/50">
                 RESINT
               </p>
-              <p className="-mt-0.5 text-[10px] font-normal tracking-wide text-muted-foreground/70">
-                restaurant system
-              </p>
             </div>
             <div className="px-4 py-4">
               <NavList items={visibleNavItems} />
             </div>
-            <div className="mt-auto border-t border-border/40 px-6 py-3">
+            <div className="mt-auto border-t border-border/40 px-6 py-2.5">
               <div className="flex items-center gap-2">
-                <p className="text-[10px] font-medium tracking-wide text-muted-foreground/50">
-                  Resint v{APP_VERSION}
+                <p className="text-[9px] tracking-wide text-muted-foreground/35">
+                  v{APP_VERSION}
                 </p>
                 {ENV_BADGE_LABEL[APP_ENV] && (
                   <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
@@ -456,9 +425,6 @@ export function AppShell({ children }: AppShellProps) {
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 text-[9px] tracking-wide text-muted-foreground/40">
-                {t("app.copyright").replace("{year}", String(new Date().getFullYear()))}
-              </p>
             </div>
           </div>
         </aside>
@@ -480,9 +446,6 @@ export function AppShell({ children }: AppShellProps) {
                     <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-foreground/50">
                       RESINT
                     </p>
-                    <p className="-mt-0.5 text-[10px] font-normal tracking-wide text-muted-foreground/70">
-                      restaurant system
-                    </p>
                   </div>
                   <div className="flex-1 px-4">
                     <NavList
@@ -491,10 +454,10 @@ export function AppShell({ children }: AppShellProps) {
                       onNavigate={() => setMobileNavOpen(false)}
                     />
                   </div>
-                  <div className="border-t border-border/40 px-5 py-2.5">
+                  <div className="border-t border-border/40 px-5 py-2">
                     <div className="flex items-center gap-2">
-                      <p className="text-[10px] font-medium tracking-wide text-muted-foreground/50">
-                        Resint v{APP_VERSION}
+                      <p className="text-[9px] tracking-wide text-muted-foreground/35">
+                        v{APP_VERSION}
                       </p>
                       {ENV_BADGE_LABEL[APP_ENV] && (
                         <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
@@ -502,15 +465,12 @@ export function AppShell({ children }: AppShellProps) {
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-[9px] tracking-wide text-muted-foreground/40">
-                      {t("app.copyright").replace("{year}", String(new Date().getFullYear()))}
-                    </p>
                   </div>
                 </SheetContent>
               </Sheet>
 
               <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:flex md:items-center md:gap-2">
-                <HeaderWordmark />
+                <span className="text-[12px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/50">RESINT</span>
               </div>
 
               <div className="relative z-10 ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
