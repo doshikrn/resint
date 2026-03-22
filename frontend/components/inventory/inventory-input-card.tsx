@@ -1,4 +1,4 @@
-import { Check, ClipboardList, Loader2, Search, Star } from "lucide-react";
+import { Check, Loader2, Search, Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,12 +76,12 @@ function ChipsSection({
           {items.map((item) => (
             <div
               key={`${title}-${item.id}`}
-              className="flex items-center gap-1 rounded-xl border border-border/50 bg-background px-1.5 py-1 shadow-sm transition-all duration-150 hover:shadow hover:border-border motion-reduce:transition-none"
+              className="flex items-center gap-0.5 rounded-lg border border-border/40 bg-background px-1 py-0.5 transition-all duration-100 hover:border-primary/30 hover:bg-primary/5 active:bg-primary/10 motion-reduce:transition-none"
             >
               <Button
                 type="button"
                 variant="secondary"
-                className="h-7 rounded-lg px-2 text-xs transition-all duration-150 hover:-translate-y-0.5 hover:bg-accent active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                className="h-6 rounded-md px-1.5 text-xs font-normal transition-colors duration-100 hover:bg-accent active:bg-accent/80 motion-reduce:transition-none"
                 onPointerDown={() => onChipPointerDown(item)}
                 onPointerUp={onChipPointerUp}
                 onPointerLeave={onChipPointerUp}
@@ -93,7 +93,7 @@ function ChipsSection({
               <Button
                 type="button"
                 variant="ghost"
-                className="h-7 rounded-lg px-2 transition-all duration-150 hover:scale-110 active:scale-95 motion-reduce:transition-none"
+                className="h-6 w-6 rounded-md p-0 transition-colors duration-100 hover:bg-muted active:bg-muted/80 motion-reduce:transition-none"
                 onClick={() => onToggleFavorite(item)}
               >
                 <Star
@@ -141,23 +141,18 @@ export function InventoryInputCard({
   const { t } = useLanguage();
 
   return (
-    <section className="space-y-4 rounded-2xl border-2 border-primary/20 bg-card p-4 shadow-md ring-1 ring-primary/5 sm:p-5 md:p-6">
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
-          <ClipboardList className="h-4 w-4 text-primary" />
-        </div>
-        <h2 className="text-base font-semibold tracking-tight md:text-lg">{t("inventory.input.title")}</h2>
-      </div>
+    <section className="space-y-4 rounded-2xl border border-border/40 bg-card p-4 sm:p-5 md:p-6">
+      <h2 className="text-sm font-medium text-muted-foreground">{t("inventory.input.title")}</h2>
 
       <div className="grid gap-5 md:grid-cols-[2fr_1.25fr_auto]">
         <div className="space-y-3">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-primary/60" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
             <Input
               data-testid="inventory-search-input"
               ref={searchInputRef}
               placeholder={t("inventory.input.search_placeholder")}
-              className="h-12 rounded-xl border-2 border-primary/25 bg-background pl-11 pr-4 text-sm shadow-sm placeholder:text-muted-foreground/50 transition-all duration-200 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:shadow-md"
+              className="h-12 rounded-xl border border-border/60 bg-background pl-11 pr-4 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
               value={searchTerm}
               disabled={!canSearch}
               onChange={onSearchChange}
@@ -218,7 +213,7 @@ export function InventoryInputCard({
                 inputMode={qtyInputMode}
                 enterKeyHint="send"
                 placeholder={t("inventory.input.qty_placeholder")}
-                className={`h-12 w-full rounded-xl border-2 bg-background pr-20 text-lg font-semibold tabular-nums shadow-sm transition-all duration-200 focus-visible:ring-2 focus-visible:shadow-md motion-reduce:transition-none ${qtyValidation.error ? "border-rose-400 focus-visible:border-rose-500 focus-visible:ring-rose-200" : "border-border/50 focus-visible:border-primary/50 focus-visible:ring-primary/20"}`}
+                className={`h-12 w-full rounded-xl border bg-background pr-20 text-lg font-semibold tabular-nums transition-all duration-150 focus-visible:ring-2 motion-reduce:transition-none ${qtyValidation.error ? "border-rose-400 focus-visible:border-rose-500 focus-visible:ring-rose-200" : "border-border/60 focus-visible:border-primary focus-visible:ring-primary/20"}`}
                 value={qty}
                 disabled={!canSearch || !selectedItem}
                 onChange={onQtyChange}
@@ -229,7 +224,7 @@ export function InventoryInputCard({
             </div>
             <Button
               type="submit"
-              className="h-12 w-12 shrink-0 rounded-xl bg-primary text-primary-foreground shadow-lg transition-all duration-150 hover:bg-primary/90 active:translate-y-px disabled:bg-muted/60 disabled:text-muted-foreground/50 disabled:shadow-none disabled:opacity-100 motion-reduce:transition-none md:hidden"
+              className="h-12 w-12 shrink-0 rounded-xl bg-emerald-600 text-white shadow-sm transition-all duration-100 hover:bg-emerald-700 active:scale-95 disabled:bg-muted disabled:text-muted-foreground/40 disabled:shadow-none motion-reduce:transition-none md:hidden"
               disabled={!canSave || savePending}
             >
               {savePending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
@@ -261,7 +256,7 @@ export function InventoryInputCard({
                   key={value}
                   type="button"
                   variant="outline"
-                  className="h-11 rounded-xl border-border/60 bg-background text-sm font-medium tabular-nums transition-all duration-150 hover:bg-primary/8 hover:border-primary/30 active:scale-[0.97] active:bg-primary active:text-primary-foreground motion-reduce:transition-none"
+                  className="h-10 rounded-lg border-border/50 bg-background text-sm font-medium tabular-nums transition-colors duration-100 hover:bg-muted/80 active:bg-muted motion-reduce:transition-none"
                   disabled={!canSearch || !selectedItem}
                   onClick={() => onHotButtonClick(value)}
                 >
@@ -277,7 +272,7 @@ export function InventoryInputCard({
           <Button
             data-testid="inventory-save-btn-desktop"
             type="submit"
-            className="hidden h-12 min-h-[48px] w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-lg transition-all duration-200 hover:bg-primary/90 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:translate-y-0 disabled:bg-muted/60 disabled:text-muted-foreground/50 disabled:shadow-none disabled:opacity-100 motion-reduce:transition-none md:flex"
+            className="hidden h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold text-white shadow-sm transition-all duration-100 hover:bg-emerald-700 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2 disabled:bg-muted disabled:text-muted-foreground/40 disabled:shadow-none motion-reduce:transition-none md:flex"
             disabled={!canSave || savePending}
           >
             {savePending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

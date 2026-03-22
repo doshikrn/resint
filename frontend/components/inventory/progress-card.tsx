@@ -1,4 +1,4 @@
-import { BarChart3, Clock, Hash, User } from "lucide-react";
+import { BarChart3, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLanguage } from "@/lib/i18n/language-provider";
 import { type InventorySessionProgress } from "@/lib/api/http";
@@ -25,7 +25,7 @@ export function ProgressCard({
   return (
     <section
       data-testid="inventory-progress-card"
-      className="rounded-2xl border border-border/50 bg-card/80 p-4 md:p-5"
+      className="rounded-2xl border border-border/40 bg-card/80 p-4 md:p-5"
     >
       <div className="flex items-center gap-2 mb-3">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted">
@@ -42,21 +42,15 @@ export function ProgressCard({
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-border/40 bg-background/50 p-3">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Hash className="h-3 w-3 text-muted-foreground/60" />
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{t("inventory.progress.items_counted")}</span>
-              </div>
-              <p data-testid="inventory-progress-total" className="text-3xl font-extrabold tabular-nums tracking-tighter text-foreground">
+            <div className="rounded-xl bg-muted/50 p-3">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">{t("inventory.progress.items_counted")}</span>
+              <p data-testid="inventory-progress-total" className="mt-0.5 text-3xl font-black tabular-nums tracking-tighter text-foreground">
                 {enteredCount}
               </p>
             </div>
-            <div className="rounded-xl border border-border/40 bg-background/50 p-3">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <User className="h-3 w-3 text-muted-foreground/60" />
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{t("inventory.progress.by_you")}</span>
-              </div>
-              <p data-testid="inventory-progress-mine" className="text-3xl font-extrabold tabular-nums tracking-tighter text-foreground">
+            <div className="rounded-xl bg-muted/50 p-3">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">{t("inventory.progress.by_you")}</span>
+              <p data-testid="inventory-progress-mine" className="mt-0.5 text-3xl font-black tabular-nums tracking-tighter text-foreground">
                 {enteredByUserCount}
               </p>
             </div>
