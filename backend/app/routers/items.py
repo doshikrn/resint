@@ -411,7 +411,9 @@ def search_items(
 
 
 @router.post("", response_model=ItemOut)
-def create_item(payload: ItemCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_item(payload: ItemCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if not can_manage_catalog(current_user.role):
+        raise HTTPException(status_code=403, detail="Insufficient role to create items")
     wh = db.query(Warehouse).filter(Warehouse.id == payload.warehouse_id).first()
     if not wh:
         raise HTTPException(status_code=404, detail="Warehouse not found")

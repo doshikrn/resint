@@ -18,32 +18,7 @@ import {
 } from "@/lib/offline-entry-queue";
 import { clearDraftByKey } from "@/lib/inventory-draft";
 import type { DictionaryKeys } from "@/lib/i18n";
-
-// ─── Types ───────────────────────────────────────────────────────────
-
-// Mirrors CurrentUserLike in use-fast-entry (structural compatibility, no circular import)
-type CurrentUserLike = {
-  username: string;
-  full_name: string | null;
-  department: string | null;
-  role: string;
-  warehouse_id?: number | null;
-  default_warehouse_id?: number | null;
-};
-
-type PendingQtyConfirm = {
-  normalizedQty: number;
-  warnings: string[];
-};
-
-type QtyValidation = {
-  normalizedQty: number | null;
-  error: string | null;
-  wasRounded: boolean;
-  roundedTo: number | null;
-  softWarning: string | null;
-  confirmWarnings: string[];
-};
+import type { CurrentUserLike, PendingQtyConfirm, QtyValidation } from "@/lib/hooks/fast-entry-types";
 
 // ─── Hook ────────────────────────────────────────────────────────────
 

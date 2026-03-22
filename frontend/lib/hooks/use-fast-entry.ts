@@ -14,14 +14,13 @@ import {
   patchInventoryEntry,
   type InventoryEntry,
   type InventoryEntrySnapshotRow,
-  type InventorySession,
   type InventorySessionProgress,
   type ItemSearchResult,
 } from "@/lib/api/http";
 import { mapApiError } from "@/lib/api/error-mapper";
 import { loadEntriesSnapshotCache, saveEntriesSnapshotCache } from "@/lib/inventory-offline-cache";
 import { invalidateInventorySessionQueries } from "@/lib/inventory-query-invalidation";
-import { type OfflineEntryQueueItem, updateOfflineEntryQueue } from "@/lib/offline-entry-queue";
+import { updateOfflineEntryQueue } from "@/lib/offline-entry-queue";
 import { useLanguage } from "@/lib/i18n/language-provider";
 import { useSuccessGlow } from "@/lib/hooks/use-success-glow";
 import { useFavorites } from "@/lib/hooks/use-favorites";
@@ -29,6 +28,15 @@ import { useOfflineSync } from "@/lib/hooks/use-offline-sync";
 import { useCatalogFetch } from "@/lib/hooks/use-catalog-fetch";
 import { useDraft } from "@/lib/hooks/use-draft";
 import { useEntrySubmit } from "@/lib/hooks/use-entry-submit";
+import type {
+  CurrentUserLike,
+  PendingQtyConfirm,
+  RecentJournalEntry,
+  RecentJournalGroup,
+  UseFastEntryParams,
+} from "@/lib/hooks/fast-entry-types";
+
+export type { CurrentUserLike, RecentJournalEntry, RecentJournalGroup, UseFastEntryParams };
 
 const SEARCH_DEBOUNCE_MS = 150;
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ru-RU", {
@@ -39,68 +47,6 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ru-RU", {
   minute: "2-digit",
   timeZone: "Asia/Almaty",
 });
-
-// ─── Types ───────────────────────────────────────────────────────────
-
-type PendingQtyConfirm = {
-  normalizedQty: number;
-  warnings: string[];
-};
-
-export type RecentJournalEntry = {
-  key: string;
-  itemId: number;
-  status: "saved" | "pending" | "syncing" | "failed" | "failed_conflict";
-  itemName: string;
-  quantity: number;
-  unit: string;
-  mode: "add" | "set";
-  timestamp: string;
-  countedOutsideZone: boolean;
-  countedByZone: string | null;
-  stationId: number | null;
-  stationName: string | null;
-  stationDepartment: string | null;
-  actorUsername?: string;
-  actorRawUsername?: string;
-  isOwnEntry?: boolean;
-  queueItem?: OfflineEntryQueueItem;
-  savedEntry?: {
-    itemId: number;
-    version: number;
-    entry: InventoryEntry;
-  };
-};
-
-export type RecentJournalGroup = {
-  label: string;
-  items: RecentJournalEntry[];
-};
-
-export type CurrentUserLike = {
-  username: string;
-  full_name: string | null;
-  department: string | null;
-  role: string;
-  warehouse_id?: number | null;
-  default_warehouse_id?: number | null;
-};
-
-// ─── Hook params ─────────────────────────────────────────────────────
-
-export type UseFastEntryParams = {
-  session: InventorySession | null;
-  isClosed: boolean;
-  selectedWarehouseId: number | null;
-  currentUser: CurrentUserLike | null;
-  canSearch: boolean;
-  canManageRevision: boolean;
-  activeSessionQueryKey: readonly unknown[];
-  inventoryView: "revision" | "management" | "reports";
-  setToastMessage: (msg: string | null) => void;
-  setInlineErrorMessage: (msg: string | null) => void;
-  setInlineErrorDebug: (msg: string | null) => void;
-};
 
 // ─── Hook ────────────────────────────────────────────────────────────
 
