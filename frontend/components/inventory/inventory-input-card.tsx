@@ -225,6 +225,7 @@ export const InventoryInputCard = memo(function InventoryInputCard({
             </div>
             <Button
               type="submit"
+              data-testid="inventory-save-btn-mobile"
               className="h-12 w-12 shrink-0 rounded-xl bg-emerald-600 text-white shadow-sm transition-all duration-100 hover:bg-emerald-700 active:scale-95 disabled:bg-muted disabled:text-muted-foreground/40 disabled:shadow-none motion-reduce:transition-none md:hidden"
               disabled={!canSave || savePending}
             >

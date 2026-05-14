@@ -176,6 +176,7 @@ export function FastEntryContainer(props: FastEntryContainerProps) {
                   variant="secondary"
                   className="rounded-xl"
                   disabled={exportPending}
+                  data-testid="inventory-export-xlsx-btn"
                   onClick={() => {
                     onExport(session.id);
                   }}

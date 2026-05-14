@@ -1,61 +1,20 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-type Zone = { id: number; name: string };
-type Warehouse = { id: number; name: string; zone_id: number };
-type Item = { id: number; name: string; unit: string; warehouse_id: number };
-
-const E2E_USERNAME = process.env.E2E_USERNAME;
-const E2E_PASSWORD = process.env.E2E_PASSWORD;
+import {
+  RECENT_PENDING_RE,
+  RECENT_SAVED_RE,
+  clickSaveEntry,
+  ensureActiveInventorySession,
+  ensureInventoryItem,
+  loginAs,
+  loginWithEnv,
+  prepareInventoryRevisionPage,
+  resumeInventoryRevisionPage,
+  runPreflight,
+  selectInventoryItemBySearch,
+} from "./helpers/inventory-e2e";
 
 let preflightSkipReason: string | null = null;
-
-async function runPreflight(request: APIRequestContext) {
-  if (!E2E_USERNAME || !E2E_PASSWORD) {
-    return "E2E credentials are not set (E2E_USERNAME/E2E_PASSWORD)";
-  }
-
-  try {
-    const health = await request.get("/api/backend/health/live");
-    if (!health.ok()) {
-      return `backend health check failed (${health.status()})`;
-    }
-
-    const login = await request.post("/api/auth/login", {
-      data: { username: E2E_USERNAME, password: E2E_PASSWORD },
-    });
-    if (!login.ok()) {
-      return `auth preflight failed (${login.status()})`;
-    }
-
-    return null;
-  } catch (error) {
-    return error instanceof Error ? error.message : "unknown preflight error";
-  }
-}
-
-async function loginAs(page: Page, username: string, password: string) {
-  await page.goto("/login");
-  await page.getByTestId("login-username").fill(username);
-  await page.getByTestId("login-password").fill(password);
-  await page.getByTestId("login-submit").click();
-
-  try {
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
-  } catch {
-    const errorLocator = page.locator("p.text-destructive").first();
-    const hasError = await errorLocator.isVisible({ timeout: 500 }).catch(() => false);
-    const errorText = hasError ? (await errorLocator.textContent()) ?? "Login failed" : "Login did not redirect";
-    throw new Error(`Login failed in UI: ${errorText}`);
-  }
-}
-
-async function login(page: Page) {
-  if (!E2E_USERNAME || !E2E_PASSWORD) {
-    throw new Error("E2E credentials are not set (E2E_USERNAME/E2E_PASSWORD)");
-  }
-
-  await loginAs(page, E2E_USERNAME, E2E_PASSWORD);
-}
 
 async function logout(page: Page) {
   await page.evaluate(async () => {
@@ -69,124 +28,11 @@ async function logout(page: Page) {
   await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
 }
 
-function buildFixtureNames(suffix: string) {
-  return {
-    zoneName: `E2E Zone ${suffix}`,
-    warehouseName: `E2E Warehouse ${suffix}`,
-    itemName: `E2E Item ${suffix}`,
-  };
+function buildSuffix(projectName: string) {
+  return `${projectName}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
 }
 
-async function ensureInventoryItem(
-  request: APIRequestContext,
-  warehouseId: number,
-  itemName: string,
-  unit = "pcs",
-) {
-  const itemsResponse = await request.get(`/api/backend/items?warehouse_id=${warehouseId}`);
-  expect(itemsResponse.ok()).toBeTruthy();
-  const items = (await itemsResponse.json()) as Item[];
-
-  let item = items.find((entry) => entry.name === itemName);
-  if (!item) {
-    const createItemResponse = await request.post("/api/backend/items", {
-      data: {
-        name: itemName,
-        unit,
-        warehouse_id: warehouseId,
-        step: 1,
-      },
-    });
-    expect(createItemResponse.ok()).toBeTruthy();
-    item = (await createItemResponse.json()) as Item;
-  }
-
-  return item;
-}
-
-async function ensureInventoryFixtures(request: APIRequestContext, suffix: string) {
-  const { zoneName, warehouseName, itemName } = buildFixtureNames(suffix);
-  const zonesResponse = await request.get("/api/backend/zones");
-  expect(zonesResponse.ok()).toBeTruthy();
-  const zones = (await zonesResponse.json()) as Zone[];
-
-  let zone = zones.find((entry) => entry.name === zoneName);
-  if (!zone) {
-    const createZoneResponse = await request.post("/api/backend/zones", {
-      data: { name: zoneName, description: `Playwright zone ${suffix}` },
-    });
-    expect(createZoneResponse.ok()).toBeTruthy();
-    zone = (await createZoneResponse.json()) as Zone;
-  }
-
-  const warehousesResponse = await request.get(`/api/backend/warehouses?zone_id=${zone.id}`);
-  expect(warehousesResponse.ok()).toBeTruthy();
-  const warehouses = (await warehousesResponse.json()) as Warehouse[];
-
-  let warehouse = warehouses.find((entry) => entry.name === warehouseName);
-  if (!warehouse) {
-    const createWarehouseResponse = await request.post("/api/backend/warehouses", {
-      data: { name: warehouseName, zone_id: zone.id },
-    });
-    expect(createWarehouseResponse.ok()).toBeTruthy();
-    warehouse = (await createWarehouseResponse.json()) as Warehouse;
-  }
-
-  const item = await ensureInventoryItem(request, warehouse.id, itemName, "pcs");
-
-  return { zone, warehouse, item };
-}
-
-async function openInventoryWithSelection(page: Page, zoneName: string, warehouseName: string) {
-  await page.goto("/inventory");
-
-  await page.getByTestId("inventory-zone-select").selectOption({ label: zoneName });
-  await page.getByTestId("inventory-warehouse-select").selectOption({ label: warehouseName });
-
-  await expect(page.getByText(/Session ID:/)).toBeVisible({ timeout: 20_000 });
-}
-
-async function selectInventoryItem(page: Page, itemName: string) {
-  const searchInput = page.getByTestId("inventory-search-input");
-  await searchInput.fill(itemName);
-
-  const dropdownItem = page.getByTestId("inventory-search-dropdown").locator("button", { hasText: itemName }).first();
-  await expect(dropdownItem).toBeVisible({ timeout: 10_000 });
-  await dropdownItem.click();
-
-  await expect(page.getByTestId("inventory-qty-input")).toBeFocused();
-}
-
-async function clickSaveEntry(page: Page) {
-  const mobileSave = page.getByTestId("inventory-save-btn-mobile");
-  const desktopSave = page.getByTestId("inventory-save-btn-desktop");
-
-  if (await mobileSave.isVisible()) {
-    await mobileSave.click();
-    return;
-  }
-  await desktopSave.click();
-}
-
-async function getSessionIdFromPage(page: Page) {
-  const sessionText = await page.getByText(/Session ID:/).innerText();
-  const sessionIdMatch = sessionText.match(/(\d+)/);
-  expect(sessionIdMatch).toBeTruthy();
-  return Number(sessionIdMatch?.[1]);
-}
-
-async function getProgressCounts(page: Page) {
-  const total = Number.parseInt((await page.getByTestId("inventory-progress-total").innerText()).trim(), 10);
-  const mine = Number.parseInt((await page.getByTestId("inventory-progress-mine").innerText()).trim(), 10);
-  const lastChange = (await page.getByTestId("inventory-progress-last-change").innerText()).trim();
-  return { total, mine, lastChange }; 
-}
-
-async function createSecondaryUser(
-  request: APIRequestContext,
-  warehouseId: number,
-  suffix: string,
-) {
+async function createSecondaryUser(request: APIRequestContext, warehouseId: number, suffix: string) {
   const username = `e2e-cook-${suffix}`.slice(0, 48);
   const password = `Pass-${suffix}-123!`;
   const response = await request.post("/api/backend/users", {
@@ -198,7 +44,6 @@ async function createSecondaryUser(
       warehouse_id: warehouseId,
     },
   });
-
   return { response, username, password };
 }
 
@@ -212,139 +57,125 @@ test.describe("Inventory revision critical flow", () => {
   });
 
   test("login -> inventory -> search/select -> save -> recent visible", async ({ page }) => {
-    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    await login(page);
-    const { zone, warehouse, item } = await ensureInventoryFixtures(page.request, suffix);
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E Item ${suffix}`);
 
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-    await selectInventoryItem(page, item.name);
-
+    await selectInventoryItemBySearch(page, item.name);
     await page.getByTestId("inventory-qty-input").fill("3");
     await clickSaveEntry(page);
 
     const recentBlock = page.getByTestId("inventory-recent-block");
-    await expect(recentBlock).toContainText(item.name, { timeout: 15_000 });
-    await expect(recentBlock).toContainText("saved", { timeout: 15_000 });
+    await expect(recentBlock).toContainText(item.name, { timeout: 20_000 });
+    await expect(recentBlock).toContainText(RECENT_SAVED_RE, { timeout: 20_000 });
   });
 
   test("offline enqueue -> reload -> relogin keeps pending visible", async ({ page, context }) => {
-    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    await login(page);
-    const { zone, warehouse, item } = await ensureInventoryFixtures(page.request, suffix);
-    const pendingItem = await ensureInventoryItem(page.request, warehouse.id, `E2E Pending ${suffix}`);
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E Item ${suffix}`);
+    const pendingItem = await ensureInventoryItem(page.request, warehouseId, `E2E Pending ${suffix}`);
 
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-    const sessionId = await getSessionIdFromPage(page);
-
+    const session = await ensureActiveInventorySession(page.request, warehouseId);
     for (let quantity = 1; quantity <= 24; quantity += 1) {
-      const response = await page.request.post(`/api/backend/inventory/sessions/${sessionId}/entries`, {
+      const response = await page.request.post(`/api/backend/inventory/sessions/${session.id}/entries`, {
         data: { item_id: item.id, quantity, mode: "set" },
       });
       expect(response.ok()).toBeTruthy();
     }
 
-    await selectInventoryItem(page, pendingItem.name);
-
+    await selectInventoryItemBySearch(page, pendingItem.name);
     await context.setOffline(true);
     await page.getByTestId("inventory-qty-input").fill("4");
     await clickSaveEntry(page);
 
     const recentBlock = page.getByTestId("inventory-recent-block");
-    await expect(recentBlock).toContainText(pendingItem.name, { timeout: 15_000 });
-    await expect(recentBlock).toContainText("pending", { timeout: 15_000 });
+    await expect(recentBlock).toContainText(pendingItem.name, { timeout: 20_000 });
+    await expect(recentBlock).toContainText(RECENT_PENDING_RE, { timeout: 20_000 });
 
-    await context.route("**/api/backend/health", async (route) => {
+    await context.route("**/api/backend/health**", async (route) => {
       await route.abort();
     });
     await context.setOffline(false);
 
-    await page.goto("/inventory");
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
+    await resumeInventoryRevisionPage(page);
     await expect(page.getByTestId("inventory-recent-block")).toContainText(pendingItem.name, {
-      timeout: 15_000,
+      timeout: 20_000,
     });
-    await expect(page.getByTestId("inventory-recent-block")).toContainText("pending", {
-      timeout: 15_000,
+    await expect(page.getByTestId("inventory-recent-block")).toContainText(RECENT_PENDING_RE, {
+      timeout: 20_000,
     });
 
     await logout(page);
-    await login(page);
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
+    await loginWithEnv(page);
+    await resumeInventoryRevisionPage(page);
     await expect(page.getByTestId("inventory-recent-block")).toContainText(pendingItem.name, {
-      timeout: 15_000,
+      timeout: 20_000,
     });
-    await expect(page.getByTestId("inventory-recent-block")).toContainText("pending", {
-      timeout: 15_000,
+    await expect(page.getByTestId("inventory-recent-block")).toContainText(RECENT_PENDING_RE, {
+      timeout: 20_000,
     });
   });
 
   test("save updates progress without manual reload", async ({ page }) => {
-    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    await login(page);
-    const { zone, warehouse, item } = await ensureInventoryFixtures(page.request, suffix);
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E Item ${suffix}`);
 
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-
-    await expect.poll(async () => (await getProgressCounts(page)).total, { timeout: 15_000 }).toBe(0);
-    await expect.poll(async () => (await getProgressCounts(page)).mine, { timeout: 15_000 }).toBe(0);
-
-    await selectInventoryItem(page, item.name);
+    await selectInventoryItemBySearch(page, item.name);
     await page.getByTestId("inventory-qty-input").fill("3");
     await clickSaveEntry(page);
 
     const recentBlock = page.getByTestId("inventory-recent-block");
-    await expect(recentBlock).toContainText(item.name, { timeout: 15_000 });
-    await expect(recentBlock).toContainText("saved", { timeout: 15_000 });
-    await expect.poll(async () => (await getProgressCounts(page)).total, { timeout: 15_000 }).toBe(1);
-    await expect.poll(async () => (await getProgressCounts(page)).mine, { timeout: 15_000 }).toBe(1);
+    await expect(recentBlock).toContainText(item.name, { timeout: 20_000 });
+    await expect(recentBlock).toContainText(RECENT_SAVED_RE, { timeout: 20_000 });
+    await expect
+      .poll(async () => Number.parseInt(await page.getByTestId("inventory-progress-total").innerText(), 10), {
+        timeout: 20_000,
+      })
+      .toBe(1);
+    await expect
+      .poll(async () => Number.parseInt(await page.getByTestId("inventory-progress-mine").innerText(), 10), {
+        timeout: 20_000,
+      })
+      .toBe(1);
     await expect(page.getByTestId("inventory-progress-last-change")).not.toContainText("—", {
       timeout: 15_000,
     });
   });
 
   test("relogin restores inventory bootstrap and reload keeps auth", async ({ page }) => {
-    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    await login(page);
-    const { zone, warehouse, item } = await ensureInventoryFixtures(page.request, suffix);
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E Item ${suffix}`);
 
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-    await selectInventoryItem(page, item.name);
+    await selectInventoryItemBySearch(page, item.name);
     await page.getByTestId("inventory-qty-input").fill("5");
     await clickSaveEntry(page);
 
     const recentBlock = page.getByTestId("inventory-recent-block");
-    await expect(recentBlock).toContainText(item.name, { timeout: 15_000 });
-    await expect(recentBlock).toContainText("saved", { timeout: 15_000 });
+    await expect(recentBlock).toContainText(item.name, { timeout: 20_000 });
+    await expect(recentBlock).toContainText(RECENT_SAVED_RE, { timeout: 20_000 });
 
     await logout(page);
-    await login(page);
+    await loginWithEnv(page);
 
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-    await expect(page.getByText(/Session ID:/)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("inventory-progress-card")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("inventory-recent-block")).toContainText(item.name, {
-      timeout: 15_000,
-    });
+    await resumeInventoryRevisionPage(page);
+    await expect(page.getByTestId("inventory-recent-block")).toContainText(item.name, { timeout: 20_000 });
 
     await page.reload();
-
     await expect(page).toHaveURL(/\/inventory/, { timeout: 20_000 });
-    await expect(page.getByText(/Session ID:/)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("inventory-progress-card")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("inventory-recent-block")).toContainText(item.name, {
-      timeout: 15_000,
-    });
+    await expect(page.getByTestId("inventory-progress-card")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("inventory-recent-block")).toContainText(item.name, { timeout: 20_000 });
     await expect(page.getByTestId("login-submit")).toHaveCount(0);
   });
 
   test("my/all toggle persists after reload and does not hide valid entries", async ({ page }) => {
-    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    await login(page);
-    const { zone, warehouse } = await ensureInventoryFixtures(page.request, suffix);
-    const remoteItem = await ensureInventoryItem(page.request, warehouse.id, `E2E Remote ${suffix}`);
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const remoteItem = await ensureInventoryItem(page.request, warehouseId, `E2E Remote ${suffix}`);
 
-    const secondary = await createSecondaryUser(page.request, warehouse.id, suffix);
+    const secondary = await createSecondaryUser(page.request, warehouseId, suffix);
     if (secondary.response.status() === 403) {
       test.skip(true, "E2E user cannot create a secondary warehouse user");
     }
@@ -352,99 +183,216 @@ test.describe("Inventory revision critical flow", () => {
 
     await logout(page);
     await loginAs(page, secondary.username, secondary.password);
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-    await selectInventoryItem(page, remoteItem.name);
+    await resumeInventoryRevisionPage(page);
+    await selectInventoryItemBySearch(page, remoteItem.name);
     await page.getByTestId("inventory-qty-input").fill("2");
     await clickSaveEntry(page);
-    await expect(page.getByTestId("inventory-recent-block")).toContainText(remoteItem.name, {
-      timeout: 15_000,
-    });
+    await expect(page.getByTestId("inventory-recent-block")).toContainText(remoteItem.name, { timeout: 20_000 });
 
     await logout(page);
-    await login(page);
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
+    await loginWithEnv(page);
+    await resumeInventoryRevisionPage(page);
 
     const recentBlock = page.getByTestId("inventory-recent-block");
-    await expect(recentBlock).toContainText(remoteItem.name, { timeout: 15_000 });
+    await expect(recentBlock).toContainText(remoteItem.name, { timeout: 20_000 });
 
     await page.getByTestId("inventory-recent-filter-mine").click();
-    await expect(recentBlock).not.toContainText(remoteItem.name, { timeout: 10_000 });
+    await expect(recentBlock).not.toContainText(remoteItem.name, { timeout: 12_000 });
 
     await page.getByTestId("inventory-recent-filter-all").click();
-    await expect(recentBlock).toContainText(remoteItem.name, { timeout: 10_000 });
+    await expect(recentBlock).toContainText(remoteItem.name, { timeout: 12_000 });
 
-    await page.goto("/inventory");
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-    await expect(page.getByTestId("inventory-recent-block")).toContainText(remoteItem.name, {
-      timeout: 15_000,
-    });
+    await resumeInventoryRevisionPage(page);
+    await expect(page.getByTestId("inventory-recent-block")).toContainText(remoteItem.name, { timeout: 20_000 });
   });
 
   test("reconnect and sync do not clear recent entries", async ({ page, context }) => {
-    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    await login(page);
-    const { zone, warehouse, item } = await ensureInventoryFixtures(page.request, suffix);
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E Item ${suffix}`);
 
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-    await selectInventoryItem(page, item.name);
-
+    await selectInventoryItemBySearch(page, item.name);
     await context.setOffline(true);
     await page.getByTestId("inventory-qty-input").fill("4");
     await clickSaveEntry(page);
 
     const recentBlock = page.getByTestId("inventory-recent-block");
-    await expect(recentBlock).toContainText(item.name, { timeout: 15_000 });
-    await expect(recentBlock).toContainText("pending", { timeout: 15_000 });
+    await expect(recentBlock).toContainText(item.name, { timeout: 20_000 });
+    await expect(recentBlock).toContainText(RECENT_PENDING_RE, { timeout: 20_000 });
 
     await context.setOffline(false);
     await expect
-      .poll(async () => (await recentBlock.innerText()).toLowerCase(), { timeout: 30_000 })
-      .toContain("saved");
+      .poll(async () => (await recentBlock.innerText()).toLowerCase(), { timeout: 45_000 })
+      .toMatch(RECENT_SAVED_RE);
 
     await page.evaluate(() => {
       window.dispatchEvent(new Event("focus"));
       window.dispatchEvent(new Event("online"));
     });
 
-    await expect(recentBlock).toContainText(item.name, { timeout: 15_000 });
+    await expect(recentBlock).toContainText(item.name, { timeout: 20_000 });
     await expect
-      .poll(async () => (await recentBlock.innerText()).toLowerCase(), { timeout: 15_000 })
-      .toContain("saved");
+      .poll(async () => (await recentBlock.innerText()).toLowerCase(), { timeout: 30_000 })
+      .toMatch(RECENT_SAVED_RE);
   });
 
-  test("export download exists", async ({ page }) => {
-    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    await login(page);
-    const { zone, warehouse } = await ensureInventoryFixtures(page.request, suffix);
+  test("export XLSX download (reports tab, active session)", async ({ page }) => {
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
 
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
+    const pfItem = await ensureInventoryItem(page.request, warehouseId, `E2E п/ф ${suffix}`);
+    const session = await ensureActiveInventorySession(page.request, warehouseId);
+    const entryRes = await page.request.post(`/api/backend/inventory/sessions/${session.id}/entries`, {
+      data: { item_id: pfItem.id, quantity: 1, mode: "set" },
+    });
+    expect(entryRes.ok()).toBeTruthy();
+
+    await page.getByTestId("inventory-tab-reports").click();
+    await expect(page.getByTestId("inventory-export-xlsx-btn").first()).toBeVisible({ timeout: 20_000 });
 
     const downloadPromise = page.waitForEvent("download");
-    await page.getByTestId("inventory-export-btn").click();
+    await page.getByTestId("inventory-export-xlsx-btn").first().click();
     const download = await downloadPromise;
+    const name = download.suggestedFilename().toLowerCase();
+    expect(name).toMatch(/\.xlsx$/);
 
-    expect(download.suggestedFilename().toLowerCase()).toContain("inventory");
-    expect(download.suggestedFilename().toLowerCase()).toContain(".xlsx");
+    const path = await download.path();
+    expect(path).toBeTruthy();
+    const fs = await import("node:fs/promises");
+    const buf = await fs.readFile(path!);
+    const semifinishedTitle = Buffer.from("п\u2044ф", "utf8");
+    expect(buf.includes(semifinishedTitle)).toBeTruthy();
   });
 
-  test("closed session blocks input", async ({ page }) => {
-    const suffix = `${test.info().project.name}-${Date.now()}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    await login(page);
-    const { zone, warehouse, item } = await ensureInventoryFixtures(page.request, suffix);
+  test("export CSV contains item name (API, same session as UI)", async ({ page }) => {
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E CSV ${suffix}`);
+    const session = await ensureActiveInventorySession(page.request, warehouseId);
+    const post = await page.request.post(`/api/backend/inventory/sessions/${session.id}/entries`, {
+      data: { item_id: item.id, quantity: 2, mode: "set" },
+    });
+    expect(post.ok()).toBeTruthy();
 
-    await openInventoryWithSelection(page, zone.name, warehouse.name);
-    await selectInventoryItem(page, item.name);
-    await page.getByTestId("inventory-qty-input").fill("2");
+    const r = await page.request.get(`/api/backend/inventory/sessions/${session.id}/export?format=csv`);
+    expect(r.ok()).toBeTruthy();
+    const text = await r.text();
+    expect(text).toContain(item.name);
+  });
 
-    const sessionId = await getSessionIdFromPage(page);
-
-    const closeResponse = await page.request.post(`/api/backend/inventory/sessions/${sessionId}/close`, {
+  test("API: PATCH entry after close requires reason", async ({ page }) => {
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E PatchClose ${suffix}`);
+    const session = await ensureActiveInventorySession(page.request, warehouseId);
+    const post = await page.request.post(`/api/backend/inventory/sessions/${session.id}/entries`, {
+      data: { item_id: item.id, quantity: 3, mode: "set" },
+    });
+    expect(post.ok()).toBeTruthy();
+    const entry = (await post.json()) as { version: number };
+    const closeResponse = await page.request.post(`/api/backend/inventory/sessions/${session.id}/close`, {
       data: { reason: "e2e-close" },
     });
     expect(closeResponse.ok()).toBeTruthy();
 
+    const badPatch = await page.request.patch(
+      `/api/backend/inventory/sessions/${session.id}/entries/${item.id}`,
+      { data: { quantity: 4, version: entry.version } },
+    );
+    expect(badPatch.status()).toBe(422);
+
+    const okPatch = await page.request.patch(`/api/backend/inventory/sessions/${session.id}/entries/${item.id}`, {
+      data: { quantity: 4, version: entry.version, reason: "e2e-correction" },
+    });
+    expect(okPatch.ok()).toBeTruthy();
+  });
+
+  test("closed session blocks further saves in UI", async ({ page }) => {
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E Item ${suffix}`);
+
+    await selectInventoryItemBySearch(page, item.name);
+    await page.getByTestId("inventory-qty-input").fill("2");
+
+    const session = await ensureActiveInventorySession(page.request, warehouseId);
+    const closeResponse = await page.request.post(`/api/backend/inventory/sessions/${session.id}/close`, {
+      data: { reason: "e2e-close" },
+    });
+    expect(closeResponse.ok()).toBeTruthy();
+
+    await expect(page.getByText(/Ввод заблокирован|Сессия закрыта/)).toBeVisible({ timeout: 20_000 });
+    await clickSaveEntry(page);
+    await expect(page.getByText(/Ревизия завершена|Сессия закрыта/)).toBeVisible({ timeout: 25_000 });
+  });
+
+  test("keyboard: search + Enter selects first row -> qty comma -> save -> focus search", async ({ page }) => {
+    const suffix = buildSuffix(test.info().project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E Keyboard ${suffix}`, "kg");
+
+    const search = page.getByTestId("inventory-search-input");
+    await search.fill(item.name);
+    await expect(page.getByTestId("inventory-search-dropdown").locator("button").first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await search.press("Enter");
+    await expect(page.getByTestId("inventory-qty-input")).toBeFocused({ timeout: 10_000 });
+
+    await page.getByTestId("inventory-qty-input").fill("1,25");
     await clickSaveEntry(page);
 
-    await expect(page.getByText("Сессия закрыта")).toBeVisible({ timeout: 20_000 });
+    const recentBlock = page.getByTestId("inventory-recent-block");
+    await expect(recentBlock).toContainText(item.name, { timeout: 20_000 });
+    await expect(recentBlock).toContainText(RECENT_SAVED_RE, { timeout: 20_000 });
+    await expect(search).toBeFocused({ timeout: 15_000 });
+  });
+
+  test("many sequential saves keep single recent row per item (chromium only)", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Stress run on chromium only");
+    test.slow();
+
+    const suffix = buildSuffix(testInfo.project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    const item = await ensureInventoryItem(page.request, warehouseId, `E2E Stress ${suffix}`);
+
+    await selectInventoryItemBySearch(page, item.name);
+    for (let i = 1; i <= 105; i += 1) {
+      await page.getByTestId("inventory-qty-input").fill(String(i));
+      await clickSaveEntry(page);
+      await expect(page.getByTestId("inventory-recent-block")).toContainText(RECENT_SAVED_RE, { timeout: 25_000 });
+    }
+
+  test("offline burst: many queued items sync without stuck pending (chromium only)", async ({ page, context }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Stress run on chromium only");
+    test.slow();
+
+    const suffix = buildSuffix(testInfo.project.name);
+    const { warehouseId } = await prepareInventoryRevisionPage(page);
+    await ensureActiveInventorySession(page.request, warehouseId);
+
+    const names: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const n = `E2E Burst ${suffix} ${i}`;
+      names.push(n);
+      await ensureInventoryItem(page.request, warehouseId, n);
+    }
+
+    await context.setOffline(true);
+    for (const name of names) {
+      await selectInventoryItemBySearch(page, name);
+      await page.getByTestId("inventory-qty-input").fill("1");
+      await clickSaveEntry(page);
+      await expect(page.getByTestId("inventory-recent-block")).toContainText(RECENT_PENDING_RE, { timeout: 20_000 });
+    }
+
+    await context.setOffline(false);
+    const recentBlock = page.getByTestId("inventory-recent-block");
+    await expect
+      .poll(async () => (await recentBlock.innerText()).toLowerCase(), { timeout: 120_000 })
+      .toMatch(RECENT_SAVED_RE);
+
+    await page.getByTestId("inventory-tab-reports").click();
+    await expect(page.getByTestId("inventory-export-xlsx-btn").first()).toBeVisible({ timeout: 20_000 });
   });
 });

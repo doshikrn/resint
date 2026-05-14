@@ -175,7 +175,10 @@ export default function BackupsPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold tracking-tight">{t("backup.title")}</h1>
-        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center text-destructive">
+        <div
+          className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center text-destructive"
+          data-testid="backups-access-error"
+        >
           {error}
         </div>
       </div>

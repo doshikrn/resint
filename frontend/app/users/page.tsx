@@ -152,7 +152,9 @@ export default function UsersPage() {
   if (!hasAccess) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
-        <p className="text-muted-foreground">403 — нет доступа</p>
+        <p className="text-muted-foreground" data-testid="users-access-denied">
+          403 — нет доступа
+        </p>
       </div>
     );
   }

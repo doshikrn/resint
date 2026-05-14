@@ -44,3 +44,42 @@ def test_recent_entry_events_default_and_requested_limits(
 
     first_ids = [row["id"] for row in expanded_body]
     assert first_ids == sorted(first_ids, reverse=True)
+
+
+def test_recent_entry_events_returns_409_when_session_closed(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    item = seed_zone_warehouse_item["item"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id, "create_if_missing": True},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    assert (
+        client.post(
+            f"/inventory/sessions/{session_id}/entries",
+            headers=auth_headers,
+            json={"item_id": item.id, "quantity": 1, "mode": "set"},
+        ).status_code
+        == 200
+    )
+
+    close = client.post(
+        f"/inventory/sessions/{session_id}/close",
+        headers=auth_headers,
+        json={"reason": "test-close"},
+    )
+    assert close.status_code == 200
+
+    blocked = client.get(
+        f"/inventory/sessions/{session_id}/entries/recent-events",
+        headers=auth_headers,
+    )
+    assert blocked.status_code == 409

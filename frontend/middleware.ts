@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "@/lib/api/auth-cookie";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/inventory", "/items", "/reports", "/settings", "/users"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/inventory",
+  "/items",
+  "/reports",
+  "/settings",
+  "/users",
+  "/backups",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -29,6 +37,7 @@ export const config = {
     "/reports/:path*",
     "/settings/:path*",
     "/users/:path*",
+    "/backups/:path*",
     "/login",
   ],
 };

@@ -812,6 +812,7 @@ export default function InventoryPage() {
           >
             <Button
               type="button"
+              data-testid="inventory-tab-revision"
               variant={inventoryView === "revision" ? "default" : "ghost"}
               className="h-10 w-full whitespace-normal rounded-lg px-3 text-sm font-medium sm:h-9 sm:w-auto"
               onClick={() => switchTab("revision")}
@@ -823,6 +824,7 @@ export default function InventoryPage() {
                 <div className="hidden sm:mx-1 sm:block sm:h-5 sm:w-px sm:bg-border/60" aria-hidden="true" />
                 <Button
                   type="button"
+                  data-testid="inventory-tab-management"
                   variant={inventoryView === "management" ? "default" : "ghost"}
                   className="h-10 w-full whitespace-normal rounded-lg px-3 text-sm font-medium sm:h-9 sm:w-auto"
                   onClick={() => switchTab("management")}
@@ -834,6 +836,7 @@ export default function InventoryPage() {
             <div className="hidden sm:mx-1 sm:block sm:h-5 sm:w-px sm:bg-border/60" aria-hidden="true" />
             <Button
               type="button"
+              data-testid="inventory-tab-reports"
               variant={inventoryView === "reports" ? "default" : "ghost"}
               className="h-10 w-full whitespace-normal rounded-lg px-3 text-sm font-medium sm:h-9 sm:w-auto"
               onClick={() => switchTab("reports")}
@@ -901,8 +904,12 @@ export default function InventoryPage() {
                     type="button"
                     variant={session && !isClosed ? "destructive" : "default"}
                     className="rounded-xl"
+                    data-testid={session && !isClosed ? "inventory-close-session-btn" : "inventory-start-session-btn"}
                     onClick={() => {
-                      if (session && !isClosed) { closeSession(session.id); return; }
+                      if (session && !isClosed) {
+                        closeSession(session.id);
+                        return;
+                      }
                       if (selectedWarehouseId !== null) createSession(selectedWarehouseId);
                     }}
                     disabled={
@@ -937,6 +944,7 @@ export default function InventoryPage() {
                           variant="secondary"
                           className="rounded-xl"
                           disabled={exportMutation.isPending}
+                          data-testid="inventory-export-xlsx-btn"
                           onClick={() => exportMutation.mutate(session.id)}
                         >
                           {exportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -1054,9 +1062,14 @@ export default function InventoryPage() {
                     {selectedReportSession ? (
                       <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
                         {userCanExport ? (
-                          <Button type="button" variant="default" className="h-9 w-full rounded-lg sm:w-auto"
+                          <Button
+                            type="button"
+                            variant="default"
+                            className="h-9 w-full rounded-lg sm:w-auto"
                             disabled={exportMutation.isPending}
-                            onClick={() => exportMutation.mutate(selectedReportSession.id)}>
+                            data-testid="inventory-export-xlsx-btn"
+                            onClick={() => exportMutation.mutate(selectedReportSession.id)}
+                          >
                             {exportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                             {exportMutation.isPending ? t("common.exporting") : t("common.export")}
                           </Button>

@@ -162,7 +162,11 @@ export function useOfflineSync(params: {
           const errInfo = error instanceof ApiRequestError
             ? { status: error.status, body: error.body.slice(0, 200) }
             : { message: String(error) };
-          console.warn("[offline-sync] send failed", { key: item.idempotency_key, ...errInfo });
+          console.warn("[offline-sync] send failed", {
+            session_id: item.session_id,
+            key: item.idempotency_key,
+            ...errInfo,
+          });
 
           if (error instanceof ApiRequestError && error.status === 409) {
             if (error.body.includes("VERSION_CONFLICT")) {

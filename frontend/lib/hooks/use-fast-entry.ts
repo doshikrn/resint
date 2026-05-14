@@ -59,7 +59,6 @@ export function useFastEntry(params: UseFastEntryParams) {
     selectedWarehouseId,
     currentUser,
     canSearch,
-    canManageRevision,
     activeSessionQueryKey,
     inventoryView,
     setToastMessage,
@@ -259,7 +258,8 @@ export function useFastEntry(params: UseFastEntryParams) {
   const recentEntriesQuery = useQuery({
     queryKey: ["recent-entries", session?.id],
     queryFn: () => getRecentInventoryEntries(session?.id as number, 20),
-    enabled: Boolean(session?.id) && (!Boolean(session?.is_closed) || canManageRevision),
+    // Backend returns 409 for closed sessions; avoid polling while closed.
+    enabled: Boolean(session?.id) && !isClosed,
     staleTime: 10_000,
     refetchInterval: 10_000,
     refetchOnWindowFocus: false,
@@ -272,7 +272,7 @@ export function useFastEntry(params: UseFastEntryParams) {
   const recentEventsQuery = useQuery({
     queryKey: ["recent-events", session?.id],
     queryFn: () => getRecentInventoryEvents(session?.id as number, 25),
-    enabled: Boolean(session?.id) && (!Boolean(session?.is_closed) || canManageRevision),
+    enabled: Boolean(session?.id) && !isClosed,
     staleTime: 10_000,
     refetchInterval: 10_000,
     refetchOnWindowFocus: false,
