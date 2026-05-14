@@ -188,6 +188,38 @@ def auth_headers_cook(client, seed_cook_user):
 
 
 @pytest.fixture
+def seed_manager_user(seed_zone_warehouse_item):
+    db = TestingSessionLocal()
+    try:
+        warehouse = seed_zone_warehouse_item["warehouse"]
+        user = User(
+            username="mgruser",
+            password_hash=hash_password("password"),
+            role="manager",
+            is_active=True,
+            warehouse_id=warehouse.id,
+            default_warehouse_id=warehouse.id,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def auth_headers_manager(client, seed_manager_user):
+    login = client.post(
+        "/auth/login",
+        json={"username": "mgruser", "password": "password"},
+    )
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def seed_zone_warehouse_item():
     db = TestingSessionLocal()
     try:

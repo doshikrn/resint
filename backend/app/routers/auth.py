@@ -105,7 +105,7 @@ def refresh_tokens(data: RefreshRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Refresh token expired or revoked")
 
     user = db.query(User).filter(User.id == token.user_id).first()
-    if not user or not user.is_active:
+    if not user or not user.is_active or user.deleted_at is not None:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
     payload = _issue_tokens(db, user, old_refresh=token)
