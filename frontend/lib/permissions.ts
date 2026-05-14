@@ -10,6 +10,8 @@ const REVISION_MANAGE_ROLES = new Set<Role>(["souschef", "chef", "manager", "adm
 const CATALOG_MANAGE_ROLES = new Set<Role>(["souschef", "chef", "manager", "admin"]);
 const EXPORT_ROLES = new Set<Role>(["souschef", "chef", "manager", "admin"]);
 const AUDIT_VIEW_ROLES = new Set<Role>(["souschef", "chef", "manager", "admin"]);
+/** Same as audit / export leadership roles — cook excluded. */
+const INVENTORY_ANALYTICS_ROLES = AUDIT_VIEW_ROLES;
 const ALL_WAREHOUSE_ROLES = new Set<Role>(["manager", "admin"]);
 const BACKUP_MANAGE_ROLES = new Set<Role>(["manager", "admin"]);
 
@@ -32,6 +34,10 @@ export function canExport(role: string): boolean {
 
 export function canViewAudit(role: string): boolean {
   return AUDIT_VIEW_ROLES.has(role as Role);
+}
+
+export function canViewInventoryAnalytics(role: string): boolean {
+  return INVENTORY_ANALYTICS_ROLES.has(role as Role);
 }
 
 export function canAccessAllWarehouses(role: string): boolean {

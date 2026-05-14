@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, ClipboardList, Database, Menu, Package, Settings, Users } from "lucide-react";
+import { Boxes, ClipboardList, Database, LineChart, Menu, Package, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -20,7 +20,7 @@ import { useCurrentUser, CURRENT_USER_CACHE_KEY } from "@/lib/hooks/use-current-
 import { resetAuthBootstrapState, resetProtectedClientState } from "@/lib/session-client-state";
 import { cn } from "@/lib/utils";
 import { IosInstallPrompt } from "@/components/ui/ios-install-prompt";
-import { canManageCatalog, canManageUsers, canManageBackups } from "@/lib/permissions";
+import { canManageBackups, canManageCatalog, canManageUsers, canViewInventoryAnalytics } from "@/lib/permissions";
 import { useLanguage } from "@/lib/i18n/language-provider";
 import { LANGUAGES, LANGUAGE_LABELS } from "@/lib/i18n";
 import type { DictionaryKeys } from "@/lib/i18n";
@@ -77,6 +77,13 @@ const navItems: NavItem[] = [
     icon: ClipboardList,
     groupKey: "nav.group.inventory",
     canView: () => true,
+  },
+  {
+    href: "/analytics",
+    labelKey: "nav.analytics",
+    icon: LineChart,
+    groupKey: "nav.group.inventory",
+    canView: canViewInventoryAnalytics,
   },
   {
     href: "/items",

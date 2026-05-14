@@ -89,6 +89,13 @@ export const API_ROUTES = {
     reportDiffToday: "/inventory/reports/diff/today",
   },
 
+  analytics: {
+    inventorySummary: "/analytics/inventory/summary",
+    inventoryDiff: "/analytics/inventory/diff",
+    inventoryTrends: "/analytics/inventory/trends",
+    inventoryProblemItems: "/analytics/inventory/problem-items",
+  },
+
   admin: {
     backups: "/admin/backups",
     backupCreate: "/admin/backups/create",

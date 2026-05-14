@@ -52,11 +52,19 @@ export {
   createItem,
   patchItem,
   getItemUnits,
+  getItemCategories,
   bulkUpsertItems,
   searchItems,
   getFrequentItems,
   getRecentItems,
 } from "@/lib/api/items";
+
+export {
+  getInventoryAnalyticsSummary,
+  getInventoryAnalyticsDiff,
+  getInventoryAnalyticsTrends,
+  getInventoryAnalyticsProblemItems,
+} from "@/lib/api/analytics";
 
 export {
   getOrCreateActiveSession,

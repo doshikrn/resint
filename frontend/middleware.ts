@@ -5,6 +5,7 @@ import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "@/lib/api/auth-cookie
 const PROTECTED_PREFIXES = [
   "/dashboard",
   "/inventory",
+  "/analytics",
   "/items",
   "/reports",
   "/settings",
@@ -33,6 +34,7 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/inventory/:path*",
+    "/analytics/:path*",
     "/items/:path*",
     "/reports/:path*",
     "/settings/:path*",

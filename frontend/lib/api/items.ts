@@ -68,6 +68,12 @@ export async function getItemUnits() {
   });
 }
 
+export async function getItemCategories() {
+  return apiRequest<Array<{ id: number; name: string }>>(API_ROUTES.items.categories, {
+    method: "GET",
+  });
+}
+
 export async function bulkUpsertItems(payload: {
   rows: ItemBulkUpsertRow[];
   dry_run?: boolean;

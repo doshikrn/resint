@@ -92,6 +92,11 @@ def can_view_audit(role: str) -> bool:
     return normalize_role(role) in AUDIT_VIEW_ROLES
 
 
+def can_view_inventory_analytics(role: str) -> bool:
+    """Dashboard between revisions: same privilege level as audit/export (cook excluded)."""
+    return normalize_role(role) in AUDIT_VIEW_ROLES
+
+
 def can_access_all_warehouses(role: str) -> bool:
     """manager only."""
     return normalize_role(role) in ALL_WAREHOUSE_ROLES

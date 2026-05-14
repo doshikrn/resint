@@ -362,6 +362,7 @@ test.describe("Inventory revision critical flow", () => {
       await clickSaveEntry(page);
       await expect(page.getByTestId("inventory-recent-block")).toContainText(RECENT_SAVED_RE, { timeout: 25_000 });
     }
+  });
 
   test("offline burst: many queued items sync without stuck pending (chromium only)", async ({ page, context }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Stress run on chromium only");

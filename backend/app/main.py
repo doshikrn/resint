@@ -29,6 +29,7 @@ from app.routers.stations import router as stations_router
 from app.routers.users import router as users_router
 from app.routers.health import router as health_router
 from app.routers.admin_backups import router as admin_backups_router
+from app.routers.analytics import router as analytics_router
 
 configure_json_logging(logging.INFO)
 
@@ -72,6 +73,7 @@ app.include_router(stations_router)
 app.include_router(users_router)
 app.include_router(health_router)
 app.include_router(admin_backups_router)
+app.include_router(analytics_router)
 
 def custom_openapi():
     if app.openapi_schema:
