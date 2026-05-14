@@ -71,9 +71,11 @@ from app.schemas.inventory import (
 )
 from app.services.audit import log_audit, verify_audit_chain
 from app.services.export import (
+    ACCOUNTING_SEMIFINISHED_SHEET_TITLE,
     build_csv_export,
     build_export_filename,
     build_xlsx_accounting_template_export,
+    is_semifinished_item,
     sort_export_rows_by_item_name,
 )
 from app.services.export_repository import (
@@ -496,7 +498,10 @@ def export_session_report(
             }
             for row in catalog_rows
         ]
-        sort_export_rows_by_item_name(template_rows)
+        regular_rows = [r for r in template_rows if not is_semifinished_item(r)]
+        semifinished_rows = [r for r in template_rows if is_semifinished_item(r)]
+        sort_export_rows_by_item_name(regular_rows)
+        sort_export_rows_by_item_name(semifinished_rows)
     else:
         entries_data: list[dict] = [
             {
@@ -570,7 +575,14 @@ def export_session_report(
         media_type = "text/csv; charset=utf-8"
     else:
         try:
-            payload = build_xlsx_accounting_template_export(template_rows)
+            payload = build_xlsx_accounting_template_export(
+                regular_rows,
+                extra_sheets=(
+                    {ACCOUNTING_SEMIFINISHED_SHEET_TITLE: semifinished_rows}
+                    if semifinished_rows
+                    else None
+                ),
+            )
         except ValueError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

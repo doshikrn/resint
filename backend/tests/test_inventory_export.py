@@ -7,7 +7,11 @@ from openpyxl import load_workbook
 from app.models.inventory_entry import InventoryEntry
 from app.models.item import Item
 from app.models.user import User
-from app.services.export import sort_export_rows_by_item_name
+from app.services.export import (
+    ACCOUNTING_SEMIFINISHED_SHEET_TITLE,
+    is_semifinished_item,
+    sort_export_rows_by_item_name,
+)
 
 
 def test_session_export_csv_returns_attachment_with_expected_headers(
@@ -148,6 +152,233 @@ def test_sort_export_rows_by_item_name_mixed_case_trim_and_stable_ties():
     ]
     sort_export_rows_by_item_name(rows)
     assert [r["Item"] for r in rows] == ["Apple", "aPPle", "  banana ", "zebra"]
+
+
+def test_is_semifinished_item_detects_pf_marker_any_case():
+    for label in ("п/ф", "П/ф", "п/Ф", "П/Ф"):
+        assert is_semifinished_item({"Item": label})
+        assert is_semifinished_item({"Item": f"Заготовка {label} для супа"})
+    assert not is_semifinished_item({"Item": "Milk"})
+    assert not is_semifinished_item({"Item": "п ф без слэша"})
+
+
+def _xlsx_goods_rows_on_sheet(content: bytes, sheet_title: str) -> list[tuple[str, str]]:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    goods_sheet = workbook[sheet_title]
+    rows_out: list[tuple[str, str]] = []
+    for row_index in range(8, goods_sheet.max_row + 1):
+        code = goods_sheet.cell(row=row_index, column=1).value
+        name = goods_sheet.cell(row=row_index, column=2).value
+        if code and name:
+            rows_out.append((str(code), str(name)))
+    return rows_out
+
+
+def test_session_export_xlsx_semifinished_sheet_splits_pf_items(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    milk_name = seed_zone_warehouse_item["item"].name
+
+    payloads = (
+        {"product_code": "60101", "name": "Соус п/ф томат", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+        {"product_code": "60102", "name": "П/ф картофель", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+        {"product_code": "60103", "name": "п/Ф лук", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+        {"product_code": "60104", "name": "П/Ф рис", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+        {"product_code": "60105", "name": "Plain Sugar", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+    )
+    created_ids: list[int] = []
+    for payload in payloads:
+        r = client.post("/items", headers=auth_headers, json=payload)
+        assert r.status_code == 200
+        created_ids.append(r.json()["id"])
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    for item_id in created_ids:
+        add = client.post(
+            f"/inventory/sessions/{session_id}/entries",
+            headers=auth_headers,
+            json={"item_id": item_id, "quantity": 1, "mode": "set"},
+        )
+        assert add.status_code == 200
+
+    export = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert export.status_code == 200
+
+    workbook = load_workbook(filename=BytesIO(export.content), data_only=True)
+    assert "Товары" in workbook.sheetnames
+    assert ACCOUNTING_SEMIFINISHED_SHEET_TITLE in workbook.sheetnames
+    assert workbook.sheetnames[0] == "Товары"
+
+    main_rows = _xlsx_goods_rows_on_sheet(export.content, "Товары")
+    pf_rows = _xlsx_goods_rows_on_sheet(export.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE)
+
+    main_names = [n for _, n in main_rows]
+    pf_names = [n for _, n in pf_rows]
+
+    for name in main_names:
+        assert not is_semifinished_item({"Item": name})
+    for name in pf_names:
+        assert is_semifinished_item({"Item": name})
+
+    assert milk_name in main_names
+    assert "Plain Sugar" in main_names
+    assert set(pf_names) == {
+        "Соус п/ф томат",
+        "П/ф картофель",
+        "п/Ф лук",
+        "П/Ф рис",
+    }
+    assert main_names == sorted(main_names, key=lambda n: n.strip().lower())
+    assert pf_names == sorted(pf_names, key=lambda n: n.strip().lower())
+
+
+def test_session_export_xlsx_no_pf_sheet_when_no_semifinished_items(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": seed_zone_warehouse_item["item"].id, "quantity": 2, "mode": "set"},
+    )
+    assert add.status_code == 200
+
+    export = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert export.status_code == 200
+    workbook = load_workbook(filename=BytesIO(export.content), data_only=True)
+    assert workbook.sheetnames == ["Товары"]
+
+
+def test_session_export_csv_still_lists_semifinished_items_on_single_export(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+
+    semi = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "60110",
+            "name": "Соус П/ф для теста CSV",
+            "unit": "l",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+    )
+    assert semi.status_code == 200
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": semi.json()["id"], "quantity": 2.5, "mode": "set"},
+    )
+    assert add.status_code == 200
+
+    export_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    assert export_csv.status_code == 200
+    body = export_csv.content.decode("utf-8")
+    assert "Соус П/ф для теста CSV" in body
+
+
+def test_session_export_xlsx_fallback_semifinished_on_pf_sheet(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+    db_session,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+
+    semi = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "60120",
+            "name": "Заготовка п/ф inactive",
+            "unit": "pcs",
+            "warehouse_id": warehouse.id,
+            "step": 1.0,
+        },
+    )
+    assert semi.status_code == 200
+    semi_id = semi.json()["id"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": semi_id, "quantity": 7, "mode": "set"},
+    )
+    assert add.status_code == 200
+
+    item = db_session.query(Item).filter(Item.id == semi_id).first()
+    assert item is not None
+    item.is_active = False
+    db_session.add(item)
+    db_session.commit()
+
+    export = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert export.status_code == 200
+
+    workbook = load_workbook(filename=BytesIO(export.content), data_only=True)
+    assert ACCOUNTING_SEMIFINISHED_SHEET_TITLE in workbook.sheetnames
+
+    pf_rows = _xlsx_goods_rows_on_sheet(export.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE)
+    assert any("Заготовка п/ф inactive" == name for _, name in pf_rows)
+    assert all(is_semifinished_item({"Item": name}) for _, name in pf_rows)
 
 
 def _session_export_csv_item_names(body: str) -> list[str]:

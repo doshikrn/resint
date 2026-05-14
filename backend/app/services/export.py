@@ -76,6 +76,18 @@ def sort_export_rows_by_item_name(rows: list[dict]) -> None:
     rows.sort(key=lambda r: str(r.get("Item", "") or "").strip().lower())
 
 
+_SEMIFINISHED_MARKER_CF = "п/ф".casefold()
+
+# Excel worksheet titles cannot contain ``/``. Use Unicode FRACTION SLASH (U+2044), same look as "п/ф".
+ACCOUNTING_SEMIFINISHED_SHEET_TITLE = "п\u2044ф"
+
+
+def is_semifinished_item(row: dict) -> bool:
+    """True if accounting export row name (``Item``) contains semi-finished marker п/ф (any case)."""
+    item = str(row.get("Item", "") or "")
+    return _SEMIFINISHED_MARKER_CF in item.casefold()
+
+
 def build_csv_export(rows: Iterable[dict]) -> bytes:
     buffer = StringIO(newline="")
     writer = csv.writer(buffer)
@@ -242,7 +254,53 @@ def _find_footer_start_row(goods_sheet) -> int | None:
     return None
 
 
-def build_xlsx_accounting_template_export(rows: Iterable[dict]) -> bytes:
+def _write_accounting_goods_data_rows(sheet, rows: list[dict], *, data_start_row: int = 8) -> int:
+    """Write accounting-style columns for ``rows``. Returns last used data row (may be ``data_start_row - 1``)."""
+    for index, row in enumerate(rows):
+        excel_row = data_start_row + index
+        sheet.cell(row=excel_row, column=1, value=str(row.get("ProductCode", "")))
+        sheet.cell(row=excel_row, column=2, value=str(row.get("Item", "")))
+        sheet.cell(row=excel_row, column=3, value=_unit_label_ru(str(row.get("Unit", ""))))
+
+        qty = row.get("Qty")
+        qty_cell = sheet.cell(row=excel_row, column=4)
+        if qty is None:
+            qty_cell.value = "-"
+        else:
+            qty_cell.value = qty
+            qty_cell.number_format = "0.###"
+
+    if not rows:
+        return data_start_row - 1
+    return data_start_row + len(rows) - 1
+
+
+def _trim_accounting_goods_table_area(sheet, *, data_start_row: int, last_data_row: int) -> None:
+    """Remove placeholder rows between data and footer (template) or sheet end."""
+    footer_start_row = _find_footer_start_row(sheet)
+    if footer_start_row is not None and footer_start_row > last_data_row + 1:
+        trailing_count = footer_start_row - last_data_row - 1
+        if trailing_count > 0:
+            sheet.delete_rows(last_data_row + 1, trailing_count)
+    else:
+        total_rows = sheet.max_row
+        trailing_count = total_rows - last_data_row
+        if trailing_count > 0:
+            sheet.delete_rows(last_data_row + 1, trailing_count)
+
+
+def _ensure_accounting_goods_header_row(sheet, *, header_row: int = 7) -> None:
+    sheet.cell(row=header_row, column=1, value="Код").font = Font(bold=True)
+    sheet.cell(row=header_row, column=2, value="Наименование").font = Font(bold=True)
+    sheet.cell(row=header_row, column=3, value="Ед. изм.").font = Font(bold=True)
+    sheet.cell(row=header_row, column=4, value="Остаток фактический").font = Font(bold=True)
+
+
+def build_xlsx_accounting_template_export(
+    rows: Iterable[dict],
+    *,
+    extra_sheets: dict[str, list[dict]] | None = None,
+) -> bytes:
     if ACCOUNTING_TEMPLATE_PATH.exists():
         workbook = load_workbook(filename=ACCOUNTING_TEMPLATE_PATH)
         if "Товары" not in workbook.sheetnames:
@@ -252,44 +310,31 @@ def build_xlsx_accounting_template_export(rows: Iterable[dict]) -> bytes:
         workbook = Workbook()
         goods_sheet = workbook.active
         goods_sheet.title = "Товары"
-        goods_sheet.cell(row=7, column=1, value="Код").font = Font(bold=True)
-        goods_sheet.cell(row=7, column=2, value="Наименование").font = Font(bold=True)
-        goods_sheet.cell(row=7, column=3, value="Ед. изм.").font = Font(bold=True)
-        goods_sheet.cell(row=7, column=4, value="Остаток фактический").font = Font(bold=True)
+        _ensure_accounting_goods_header_row(goods_sheet)
 
     data_start_row = 8
     normalized_rows = list(rows)
+    last_main_row = _write_accounting_goods_data_rows(
+        goods_sheet, normalized_rows, data_start_row=data_start_row
+    )
+    _trim_accounting_goods_table_area(
+        goods_sheet, data_start_row=data_start_row, last_data_row=last_main_row
+    )
 
-    # Populate actual data rows
-    for index, row in enumerate(normalized_rows):
-        excel_row = data_start_row + index
-        goods_sheet.cell(row=excel_row, column=1, value=str(row.get("ProductCode", "")))
-        goods_sheet.cell(row=excel_row, column=2, value=str(row.get("Item", "")))
-        goods_sheet.cell(
-            row=excel_row, column=3, value=_unit_label_ru(str(row.get("Unit", "")))
+    for sheet_title, extra_rows in (extra_sheets or {}).items():
+        if not extra_rows:
+            continue
+        extra_list = list(extra_rows)
+        if sheet_title in workbook.sheetnames:
+            workbook.remove(workbook[sheet_title])
+        extra_sheet = workbook.create_sheet(title=sheet_title)
+        _ensure_accounting_goods_header_row(extra_sheet)
+        last_extra = _write_accounting_goods_data_rows(
+            extra_sheet, extra_list, data_start_row=data_start_row
         )
-
-        qty = row.get("Qty")
-        qty_cell = goods_sheet.cell(row=excel_row, column=4)
-        if qty is None:
-            qty_cell.value = "-"
-        else:
-            qty_cell.value = qty
-            qty_cell.number_format = "0.###"
-
-    # Trim only the empty table area. If the template contains a footer block,
-    # keep all rows from the footer marker and below intact.
-    last_data_row = data_start_row + len(normalized_rows) - 1
-    footer_start_row = _find_footer_start_row(goods_sheet)
-    if footer_start_row is not None and footer_start_row > last_data_row + 1:
-        trailing_count = footer_start_row - last_data_row - 1
-        if trailing_count > 0:
-            goods_sheet.delete_rows(last_data_row + 1, trailing_count)
-    else:
-        total_rows = goods_sheet.max_row
-        trailing_count = total_rows - last_data_row
-        if trailing_count > 0:
-            goods_sheet.delete_rows(last_data_row + 1, trailing_count)
+        _trim_accounting_goods_table_area(
+            extra_sheet, data_start_row=data_start_row, last_data_row=last_extra
+        )
 
     output = BytesIO()
     workbook.save(output)
