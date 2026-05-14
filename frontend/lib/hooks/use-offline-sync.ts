@@ -146,7 +146,7 @@ export function useOfflineSync(params: {
             quantity: item.qty,
             mode: item.mode,
             stationId: item.station_id ?? null,
-            countedOutsideZone: false,
+            countedOutsideZone: item.counted_outside_zone,
             idempotencyKey: item.idempotency_key,
             timeoutMs: 8000,
             expectedVersion: item.mode === "set" ? (item.expected_version ?? null) : null,
