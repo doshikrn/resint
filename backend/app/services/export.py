@@ -67,6 +67,15 @@ def _qty_number_format(unit: str) -> str:
     return "0.00"
 
 
+def sort_export_rows_by_item_name(rows: list[dict]) -> None:
+    """Sort session export row dicts by ``Item`` before CSV/XLSX builders.
+
+    Comparison uses trimmed names and case-insensitive ordering. The sort is
+    stable so ties keep their relative order.
+    """
+    rows.sort(key=lambda r: str(r.get("Item", "") or "").strip().lower())
+
+
 def build_csv_export(rows: Iterable[dict]) -> bytes:
     buffer = StringIO(newline="")
     writer = csv.writer(buffer)

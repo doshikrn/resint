@@ -74,6 +74,7 @@ from app.services.export import (
     build_csv_export,
     build_export_filename,
     build_xlsx_accounting_template_export,
+    sort_export_rows_by_item_name,
 )
 from app.services.export_repository import (
     fetch_session_catalog_export_rows,
@@ -495,6 +496,7 @@ def export_session_report(
             }
             for row in catalog_rows
         ]
+        sort_export_rows_by_item_name(template_rows)
     else:
         entries_data: list[dict] = [
             {
@@ -521,9 +523,7 @@ def export_session_report(
             for row in export_rows
         ]
 
-        entries_data.sort(
-            key=lambda row: (str(row["Category"]).lower(), str(row["Item"]).lower())
-        )
+        sort_export_rows_by_item_name(entries_data)
 
     session_closed_event = (
         db.query(InventorySessionEvent)

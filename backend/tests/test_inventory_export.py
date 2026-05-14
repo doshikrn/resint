@@ -1,11 +1,13 @@
+import csv
 import time
-from io import BytesIO
+from io import BytesIO, StringIO
 
 from openpyxl import load_workbook
 
 from app.models.inventory_entry import InventoryEntry
 from app.models.item import Item
 from app.models.user import User
+from app.services.export import sort_export_rows_by_item_name
 
 
 def test_session_export_csv_returns_attachment_with_expected_headers(
@@ -135,6 +137,177 @@ def test_session_export_xlsx_matches_template_spec(
     assert goods_sheet.cell(row=8, column=3).value in {"кг", "л", "шт", item.unit}
     assert isinstance(goods_sheet.cell(row=8, column=4).value, (int, float))
     assert goods_sheet.cell(row=8, column=4).number_format == "0.###"
+
+
+def test_sort_export_rows_by_item_name_mixed_case_trim_and_stable_ties():
+    rows = [
+        {"Item": "  banana "},
+        {"Item": "zebra"},
+        {"Item": "Apple"},
+        {"Item": "aPPle"},
+    ]
+    sort_export_rows_by_item_name(rows)
+    assert [r["Item"] for r in rows] == ["Apple", "aPPle", "  banana ", "zebra"]
+
+
+def _session_export_csv_item_names(body: str) -> list[str]:
+    reader = csv.reader(StringIO(body))
+    rows = list(reader)
+    if not rows:
+        return []
+    header = rows[0]
+    item_idx = header.index("Item")
+    return [r[item_idx] for r in rows[1:] if len(r) > item_idx]
+
+
+def _session_export_xlsx_item_names(content: bytes) -> list[str]:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    goods_sheet = workbook["Товары"]
+    names: list[str] = []
+    for row_index in range(8, goods_sheet.max_row + 1):
+        name = goods_sheet.cell(row=row_index, column=2).value
+        code = goods_sheet.cell(row=row_index, column=1).value
+        if name and code:
+            names.append(str(name))
+    return names
+
+
+def test_session_export_csv_and_xlsx_share_alphabetical_item_order(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+
+    created: dict[str, int] = {}
+    for payload in (
+        {"product_code": "50101", "name": "Zulu row", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+        {"product_code": "50102", "name": "alpha mixed", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+        {"product_code": "50103", "name": "Mike", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+    ):
+        r = client.post("/items", headers=auth_headers, json=payload)
+        assert r.status_code == 200
+        created[payload["name"]] = r.json()["id"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    for item_name in ("Zulu row", "Mike", "alpha mixed"):
+        add = client.post(
+            f"/inventory/sessions/{session_id}/entries",
+            headers=auth_headers,
+            json={"item_id": created[item_name], "quantity": 1, "mode": "set"},
+        )
+        assert add.status_code == 200
+
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    exp_xlsx = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx"},
+    )
+    assert exp_csv.status_code == 200
+    assert exp_xlsx.status_code == 200
+
+    subset = frozenset({"Zulu row", "alpha mixed", "Mike"})
+    csv_subset = [n for n in _session_export_csv_item_names(exp_csv.content.decode("utf-8")) if n in subset]
+    xlsx_subset = [n for n in _session_export_xlsx_item_names(exp_xlsx.content) if n in subset]
+    expected = sorted(subset, key=lambda n: n.strip().lower())
+    assert csv_subset == expected
+    assert xlsx_subset == expected
+    assert csv_subset == xlsx_subset
+
+
+def test_session_export_fallback_row_sorted_by_item_name_with_catalog_rows(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+    db_session,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    milk_name = seed_zone_warehouse_item["item"].name
+
+    banana = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "50201",
+            "name": "Banana line",
+            "unit": "pcs",
+            "warehouse_id": warehouse.id,
+            "step": 1.0,
+        },
+    )
+    assert banana.status_code == 200
+    apple = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "50200",
+            "name": "Apple gap",
+            "unit": "pcs",
+            "warehouse_id": warehouse.id,
+            "step": 1.0,
+        },
+    )
+    assert apple.status_code == 200
+    apple_id = apple.json()["id"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    for item_id, qty in (
+        (seed_zone_warehouse_item["item"].id, 1),
+        (banana.json()["id"], 2),
+        (apple_id, 3),
+    ):
+        add = client.post(
+            f"/inventory/sessions/{session_id}/entries",
+            headers=auth_headers,
+            json={"item_id": item_id, "quantity": qty, "mode": "set"},
+        )
+        assert add.status_code == 200
+
+    item = db_session.query(Item).filter(Item.id == apple_id).first()
+    assert item is not None
+    item.is_active = False
+    db_session.add(item)
+    db_session.commit()
+
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    exp_xlsx = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx"},
+    )
+    assert exp_csv.status_code == 200
+    assert exp_xlsx.status_code == 200
+
+    subset = frozenset({"Apple gap", "Banana line", milk_name})
+    csv_subset = [n for n in _session_export_csv_item_names(exp_csv.content.decode("utf-8")) if n in subset]
+    xlsx_subset = [n for n in _session_export_xlsx_item_names(exp_xlsx.content) if n in subset]
+    expected = sorted(subset, key=lambda n: n.strip().lower())
+    assert csv_subset == expected
+    assert xlsx_subset == expected
+    assert csv_subset == xlsx_subset
 
 
 def test_session_export_unknown_session_returns_404(client, auth_headers):
@@ -372,6 +545,7 @@ def test_session_export_entries_sorted_and_qty_preserved_and_uncategorized(
     assert row_by_name["Water Bottle"][0] == "10201"
     assert row_by_name["Beef Round"][3] == 1.13
     assert row_by_name["Water Bottle"][3] == 2.37
+    assert [row[1] for row in rows] == ["Beef Round", "Milk", "Water Bottle"]
 
 
 def test_export_xlsx_keeps_fractional_precision_for_qty_915(
