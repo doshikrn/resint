@@ -245,6 +245,24 @@ def test_session_export_xlsx_semifinished_sheet_splits_pf_items(
     assert main_names == sorted(main_names, key=lambda n: n.strip().lower())
     assert pf_names == sorted(pf_names, key=lambda n: n.strip().lower())
 
+    main_ws = workbook["Товары"]
+    pf_ws = workbook[ACCOUNTING_SEMIFINISHED_SHEET_TITLE]
+    main_merged = list(main_ws.merged_cells.ranges)
+    pf_merged = list(pf_ws.merged_cells.ranges)
+    assert len(main_merged) == len(pf_merged)
+    if main_merged:
+        assert str(main_merged[0]) == str(pf_merged[0])
+
+    def _footer_marker_row(sheet):
+        for row_index in range(1, sheet.max_row + 1):
+            value = sheet.cell(row=row_index, column=1).value
+            if isinstance(value, str) and "Инвентаризацию произвел" in value:
+                return row_index
+        return None
+
+    assert _footer_marker_row(main_ws) is not None
+    assert _footer_marker_row(pf_ws) is not None
+
 
 def test_session_export_xlsx_no_pf_sheet_when_no_semifinished_items(
     client,

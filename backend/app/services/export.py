@@ -254,6 +254,21 @@ def _find_footer_start_row(goods_sheet) -> int | None:
     return None
 
 
+def _clear_accounting_goods_data_values(
+    sheet,
+    *,
+    data_start_row: int,
+    last_row: int,
+    last_column: int = 4,
+) -> None:
+    """Clear product table cell values (default first 4 columns); keeps styles/merged structure."""
+    if last_row < data_start_row:
+        return
+    for row_index in range(data_start_row, last_row + 1):
+        for col_index in range(1, last_column + 1):
+            sheet.cell(row=row_index, column=col_index).value = None
+
+
 def _write_accounting_goods_data_rows(sheet, rows: list[dict], *, data_start_row: int = 8) -> int:
     """Write accounting-style columns for ``rows``. Returns last used data row (may be ``data_start_row - 1``)."""
     for index, row in enumerate(rows):
@@ -278,15 +293,17 @@ def _write_accounting_goods_data_rows(sheet, rows: list[dict], *, data_start_row
 def _trim_accounting_goods_table_area(sheet, *, data_start_row: int, last_data_row: int) -> None:
     """Remove placeholder rows between data and footer (template) or sheet end."""
     footer_start_row = _find_footer_start_row(sheet)
-    if footer_start_row is not None and footer_start_row > last_data_row + 1:
-        trailing_count = footer_start_row - last_data_row - 1
-        if trailing_count > 0:
-            sheet.delete_rows(last_data_row + 1, trailing_count)
-    else:
-        total_rows = sheet.max_row
-        trailing_count = total_rows - last_data_row
-        if trailing_count > 0:
-            sheet.delete_rows(last_data_row + 1, trailing_count)
+    if footer_start_row is not None:
+        if footer_start_row > last_data_row + 1:
+            trailing_count = footer_start_row - last_data_row - 1
+            if trailing_count > 0:
+                sheet.delete_rows(last_data_row + 1, trailing_count)
+        return
+
+    total_rows = sheet.max_row
+    trailing_count = total_rows - last_data_row
+    if trailing_count > 0:
+        sheet.delete_rows(last_data_row + 1, trailing_count)
 
 
 def _ensure_accounting_goods_header_row(sheet, *, header_row: int = 7) -> None:
@@ -325,15 +342,33 @@ def build_xlsx_accounting_template_export(
         if not extra_rows:
             continue
         extra_list = list(extra_rows)
+        m_extra = len(extra_list)
+        n_main = len(normalized_rows)
+
         if sheet_title in workbook.sheetnames:
             workbook.remove(workbook[sheet_title])
-        extra_sheet = workbook.create_sheet(title=sheet_title)
-        _ensure_accounting_goods_header_row(extra_sheet)
+
+        pf_sheet = workbook.copy_worksheet(goods_sheet)
+        pf_sheet.title = sheet_title
+
+        footer_row = _find_footer_start_row(pf_sheet)
+        if footer_row is not None:
+            capacity = footer_row - data_start_row
+            if m_extra > capacity:
+                pf_sheet.insert_rows(footer_row, amount=m_extra - capacity)
+
+        if n_main > 0:
+            _clear_accounting_goods_data_values(
+                pf_sheet,
+                data_start_row=data_start_row,
+                last_row=data_start_row + n_main - 1,
+            )
+
         last_extra = _write_accounting_goods_data_rows(
-            extra_sheet, extra_list, data_start_row=data_start_row
+            pf_sheet, extra_list, data_start_row=data_start_row
         )
         _trim_accounting_goods_table_area(
-            extra_sheet, data_start_row=data_start_row, last_data_row=last_extra
+            pf_sheet, data_start_row=data_start_row, last_data_row=last_extra
         )
 
     output = BytesIO()
