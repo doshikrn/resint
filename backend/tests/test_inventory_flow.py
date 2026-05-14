@@ -49,6 +49,59 @@ def test_duplicate_add_entry_no_duplicates(client, auth_headers, seed_zone_wareh
     assert same_item_entries[0]["quantity"] == 2.0
 
 
+def test_add_mode_kg_decimal_accumulates(client, auth_headers, seed_zone_warehouse_item):
+    warehouse_id = seed_zone_warehouse_item["warehouse"].id
+    item_id = seed_zone_warehouse_item["item"].id
+
+    active = client.post(
+        "/inventory/sessions/active", headers=auth_headers, json={"warehouse_id": warehouse_id}
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    first = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 1.5, "mode": "add"},
+    )
+    assert first.status_code == 200
+    second = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 0.25, "mode": "add"},
+    )
+    assert second.status_code == 200
+
+    entries = client.get(f"/inventory/sessions/{session_id}/entries", headers=auth_headers)
+    assert entries.status_code == 200
+    row = next(e for e in entries.json() if e["item_id"] == item_id)
+    assert abs(float(row["quantity"]) - 1.75) < 1e-6
+
+
+def test_set_mode_replaces_quantity(client, auth_headers, seed_zone_warehouse_item):
+    warehouse_id = seed_zone_warehouse_item["warehouse"].id
+    item_id = seed_zone_warehouse_item["item"].id
+
+    active = client.post(
+        "/inventory/sessions/active", headers=auth_headers, json={"warehouse_id": warehouse_id}
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 5, "mode": "set"},
+    )
+    replace = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 2.2, "mode": "set"},
+    )
+    assert replace.status_code == 200
+    assert replace.json()["quantity"] == 2.2
+
+
 def test_entry_response_contains_item_metadata(client, auth_headers, seed_zone_warehouse_item):
     headers = auth_headers
     warehouse_id = seed_zone_warehouse_item["warehouse"].id

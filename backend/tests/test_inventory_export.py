@@ -1197,6 +1197,159 @@ def test_export_csv_keeps_russian_names_utf8(
     assert "Говядина вырезка" in body
 
 
+def _csv_qty_by_item_name(body: str, item_name: str) -> float | None:
+    reader = csv.DictReader(StringIO(body))
+    for row in reader:
+        if row.get("Item") == item_name:
+            return float(row["Qty"])
+    return None
+
+
+def _xlsx_qty_by_item_name_on_sheet(
+    content: bytes, sheet_name: str, item_name: str
+) -> float | str | None:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    sheet = workbook[sheet_name]
+    for row_index in range(8, sheet.max_row + 1):
+        if str(sheet.cell(row=row_index, column=2).value or "") == item_name:
+            qty = sheet.cell(row=row_index, column=4).value
+            if qty == "-":
+                return None
+            return qty
+    return None
+
+
+def test_closed_session_export_xlsx_catalog_matches_csv_snapshot_qty(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    """XLSX catalog path must use the same closed-session qty source as CSV (totals snapshot)."""
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    item = seed_zone_warehouse_item["item"]
+    milk_name = item.name
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item.id, "quantity": 2.25, "mode": "set"},
+    )
+    assert add.status_code == 200
+
+    close = client.post(f"/inventory/sessions/{session_id}/close", headers=auth_headers)
+    assert close.status_code == 200
+
+    correct = client.patch(
+        f"/inventory/sessions/{session_id}/entries/{item.id}",
+        headers={**auth_headers, "If-Match": "1"},
+        json={"quantity": 9.99, "reason": "post-close recount"},
+    )
+    assert correct.status_code == 200
+
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    exp_xlsx = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert exp_csv.status_code == 200
+    assert exp_xlsx.status_code == 200
+
+    csv_qty = _csv_qty_by_item_name(exp_csv.content.decode("utf-8"), milk_name)
+    xlsx_qty = _xlsx_qty_by_item_name_on_sheet(exp_xlsx.content, "Товары", milk_name)
+    assert csv_qty == 2.25
+    assert isinstance(xlsx_qty, (int, float))
+    assert float(xlsx_qty) == 2.25
+
+
+def test_export_qty_preserved_after_pf_sheet_split(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+
+    semi = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "70101",
+            "name": "Тестовая п/ф смесь",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+    )
+    assert semi.status_code == 200
+    regular = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "70102",
+            "name": "Zebra Regular",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+    )
+    assert regular.status_code == 200
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    for item_id, qty in (
+        (semi.json()["id"], 3.33),
+        (regular.json()["id"], 7.77),
+    ):
+        add = client.post(
+            f"/inventory/sessions/{session_id}/entries",
+            headers=auth_headers,
+            json={"item_id": item_id, "quantity": qty, "mode": "set"},
+        )
+        assert add.status_code == 200
+
+    exp_xlsx = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert exp_xlsx.status_code == 200
+
+    assert float(_xlsx_qty_by_item_name_on_sheet(exp_xlsx.content, "Товары", "Zebra Regular")) == 7.77
+    assert float(
+        _xlsx_qty_by_item_name_on_sheet(
+            exp_xlsx.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE, "Тестовая п/ф смесь"
+        )
+    ) == 3.33
+
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    assert exp_csv.status_code == 200
+    body = exp_csv.content.decode("utf-8")
+    assert _csv_qty_by_item_name(body, "Zebra Regular") == 7.77
+    assert _csv_qty_by_item_name(body, "Тестовая п/ф смесь") == 3.33
+
+
 def test_export_500_rows_completes_quickly(
     client,
     auth_headers,

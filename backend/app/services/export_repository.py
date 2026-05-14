@@ -245,19 +245,41 @@ def fetch_session_catalog_export_rows(
         .all()
     )
 
-    session_entry_rows = (
+    has_totals_table = _has_table(db, InventorySessionTotal.__tablename__)
+    if has_totals_table:
+        entry_qty_expr = case(
+            (
+                InventorySession.status == SessionStatus.CLOSED,
+                func.coalesce(InventorySessionTotal.qty_final, InventoryEntry.quantity),
+            ),
+            else_=InventoryEntry.quantity,
+        ).label("qty")
+    else:
+        entry_qty_expr = InventoryEntry.quantity.label("qty")
+
+    session_entry_query = (
         db.query(
             Item.id.label("item_id"),
             Item.product_code.label("product_code"),
             Item.name.label("item_name"),
             Item.unit.label("unit"),
-            InventoryEntry.quantity.label("qty"),
+            entry_qty_expr,
         )
         .join(Item, Item.id == InventoryEntry.item_id)
+        .join(InventorySession, InventorySession.id == InventoryEntry.session_id)
         .filter(InventoryEntry.session_id == session_id)
         .order_by(Item.product_code.asc(), Item.name.asc(), Item.id.asc())
-        .all()
     )
+    if has_totals_table:
+        session_entry_query = session_entry_query.outerjoin(
+            InventorySessionTotal,
+            and_(
+                InventorySessionTotal.session_id == InventoryEntry.session_id,
+                InventorySessionTotal.item_id == InventoryEntry.item_id,
+            ),
+        )
+
+    session_entry_rows = session_entry_query.all()
 
     qty_by_item_id: dict[int, Decimal] = {}
     fallback_rows: list[SessionCatalogExportRow] = []

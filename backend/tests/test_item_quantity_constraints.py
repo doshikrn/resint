@@ -128,3 +128,44 @@ def test_inventory_respects_min_max_qty(client, auth_headers, seed_zone_warehous
         json={"item_id": limited_item.id, "quantity": 6.0, "mode": "set"},
     )
     assert too_high.status_code == 422
+
+
+def test_inventory_pcs_integer_step_rejects_fractional_quantity(
+    client, auth_headers, seed_zone_warehouse_item, db_session
+):
+    warehouse_id = seed_zone_warehouse_item["warehouse"].id
+    pcs_item = Item(
+        product_code="10074",
+        name="Forks",
+        unit="pcs",
+        step=1.0,
+        min_qty=None,
+        max_qty=None,
+        is_active=True,
+        warehouse_id=warehouse_id,
+    )
+    db_session.add(pcs_item)
+    db_session.commit()
+    db_session.refresh(pcs_item)
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse_id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    bad = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": pcs_item.id, "quantity": 1.5, "mode": "set"},
+    )
+    assert bad.status_code == 422
+
+    good = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": pcs_item.id, "quantity": 4, "mode": "set"},
+    )
+    assert good.status_code == 200
