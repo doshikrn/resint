@@ -1219,6 +1219,38 @@ def _xlsx_qty_by_item_name_on_sheet(
     return None
 
 
+def _xlsx_qty_by_item_name(content: bytes, item_name: str) -> float | str | None:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    for sheet_name in workbook.sheetnames:
+        sheet = workbook[sheet_name]
+        for row_index in range(8, sheet.max_row + 1):
+            if str(sheet.cell(row=row_index, column=2).value or "") == item_name:
+                qty = sheet.cell(row=row_index, column=4).value
+                if qty == "-":
+                    return None
+                return qty
+    return None
+
+
+def _csv_counted_qty_by_item_name(body: str) -> dict[str, float]:
+    reader = csv.DictReader(StringIO(body))
+    return {str(row["Item"]): float(row["Qty"]) for row in reader if row.get("Item")}
+
+
+def _xlsx_counted_qty_by_item_name(content: bytes) -> dict[str, float]:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    quantities: dict[str, float] = {}
+    for sheet_name in workbook.sheetnames:
+        sheet = workbook[sheet_name]
+        for row_index in range(8, sheet.max_row + 1):
+            item_name = sheet.cell(row=row_index, column=2).value
+            qty = sheet.cell(row=row_index, column=4).value
+            if not item_name or qty in (None, "-"):
+                continue
+            quantities[str(item_name)] = float(qty)
+    return quantities
+
+
 def test_closed_session_export_xlsx_catalog_matches_csv_snapshot_qty(
     client,
     auth_headers,
@@ -1348,6 +1380,378 @@ def test_export_qty_preserved_after_pf_sheet_split(
     body = exp_csv.content.decode("utf-8")
     assert _csv_qty_by_item_name(body, "Zebra Regular") == 7.77
     assert _csv_qty_by_item_name(body, "Тестовая п/ф смесь") == 3.33
+
+
+def test_closed_session_inactive_item_survives_csv_and_xlsx_export_after_close(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+    db_session,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+
+    item_response = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "80100",
+            "name": "Closed Inactive Snapshot",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+    )
+    assert item_response.status_code == 200
+    item_id = item_response.json()["id"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 8.75, "mode": "set"},
+    )
+    assert add.status_code == 200
+    close = client.post(f"/inventory/sessions/{session_id}/close", headers=auth_headers)
+    assert close.status_code == 200
+
+    item = db_session.query(Item).filter(Item.id == item_id).first()
+    assert item is not None
+    item.is_active = False
+    db_session.add(item)
+    db_session.commit()
+
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    exp_xlsx = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert exp_csv.status_code == 200
+    assert exp_xlsx.status_code == 200
+
+    assert _csv_qty_by_item_name(exp_csv.content.decode("utf-8"), "Closed Inactive Snapshot") == 8.75
+    assert _xlsx_qty_by_item_name(exp_xlsx.content, "Closed Inactive Snapshot") == 8.75
+
+
+def test_export_diagnostics_keeps_snapshot_item_after_live_entry_deleted(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+    db_session,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+
+    item_response = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "80101",
+            "name": "Forensic Lost Row",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+    )
+    assert item_response.status_code == 200
+    item_id = item_response.json()["id"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 6.5, "mode": "set"},
+    )
+    assert add.status_code == 200
+
+    close = client.post(f"/inventory/sessions/{session_id}/close", headers=auth_headers)
+    assert close.status_code == 200
+
+    item = db_session.query(Item).filter(Item.id == item_id).first()
+    assert item is not None
+    item.is_active = False
+    db_session.add(item)
+    db_session.commit()
+
+    delete = client.delete(
+        f"/inventory/sessions/{session_id}/entries/{item_id}",
+        headers=auth_headers,
+    )
+    assert delete.status_code == 204
+
+    report = client.get(f"/inventory/reports/session/{session_id}", headers=auth_headers)
+    assert report.status_code == 200
+    report_items = {row["item_id"]: row for row in report.json()["items"]}
+    assert report_items[item_id]["quantity"] == 6.5
+
+    diagnostic = client.get(
+        f"/inventory/sessions/{session_id}/export/diagnostics",
+        headers=auth_headers,
+    )
+    assert diagnostic.status_code == 200
+    body = diagnostic.json()
+
+    assert body["counts"]["inventory_entries"] == 0
+    assert body["counts"]["inventory_session_totals"] == 1
+    assert body["counts"]["export_repository_csv_rows"] == 1
+    assert item_id in body["stage_item_ids"]["export_repository_catalog_rows"]
+    assert item_id in body["stage_item_ids"]["export_repository_csv_rows"]
+    assert body["snapshot_live_gaps"]["snapshot_items_without_inventory_entry"][0][
+        "item_id"
+    ] == item_id
+    assert not any(
+        loss["from"] == "inventory_session_totals"
+        and loss["to"] == "catalog_export_rows"
+        and item_id in loss["missing_item_ids"]
+        for loss in body["losses"]
+    )
+
+
+def test_closed_session_xlsx_keeps_snapshot_item_after_live_entry_deleted(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+    db_session,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    item_response = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "80102",
+            "name": "Forensic Snapshot Only",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+    )
+    assert item_response.status_code == 200
+    item_id = item_response.json()["id"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 4.25, "mode": "set"},
+    )
+    assert add.status_code == 200
+    close = client.post(f"/inventory/sessions/{session_id}/close", headers=auth_headers)
+    assert close.status_code == 200
+
+    item = db_session.query(Item).filter(Item.id == item_id).first()
+    assert item is not None
+    item.is_active = False
+    db_session.add(item)
+    db_session.commit()
+
+    delete = client.delete(
+        f"/inventory/sessions/{session_id}/entries/{item_id}",
+        headers=auth_headers,
+    )
+    assert delete.status_code == 204
+
+    export = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert export.status_code == 200
+
+    names = _session_export_xlsx_item_names(export.content)
+    assert "Forensic Snapshot Only" in names
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    assert exp_csv.status_code == 200
+    assert _csv_qty_by_item_name(exp_csv.content.decode("utf-8"), "Forensic Snapshot Only") == 4.25
+    assert (
+        _xlsx_qty_by_item_name_on_sheet(export.content, "Товары", "Forensic Snapshot Only")
+        == 4.25
+    )
+
+
+def test_closed_session_csv_and_xlsx_counted_snapshot_rows_remain_identical(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+    db_session,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    pf_name = "Snapshot parity \u043f/\u0444 sauce"
+
+    regular = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "80103",
+            "name": "Snapshot parity regular",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+    )
+    pf = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "80104",
+            "name": pf_name,
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+    )
+    assert regular.status_code == 200
+    assert pf.status_code == 200
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    for item_id, qty in (
+        (regular.json()["id"], 5.5),
+        (pf.json()["id"], 1.25),
+    ):
+        add = client.post(
+            f"/inventory/sessions/{session_id}/entries",
+            headers=auth_headers,
+            json={"item_id": item_id, "quantity": qty, "mode": "set"},
+        )
+        assert add.status_code == 200
+
+    close = client.post(f"/inventory/sessions/{session_id}/close", headers=auth_headers)
+    assert close.status_code == 200
+
+    for item_id in (regular.json()["id"], pf.json()["id"]):
+        item = db_session.query(Item).filter(Item.id == item_id).first()
+        assert item is not None
+        item.is_active = False
+        db_session.add(item)
+    db_session.commit()
+
+    for item_id in (regular.json()["id"], pf.json()["id"]):
+        delete = client.delete(
+            f"/inventory/sessions/{session_id}/entries/{item_id}",
+            headers=auth_headers,
+        )
+        assert delete.status_code == 204
+
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    exp_xlsx = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert exp_csv.status_code == 200
+    assert exp_xlsx.status_code == 200
+
+    expected = {
+        "Snapshot parity regular": 5.5,
+        pf_name: 1.25,
+    }
+    csv_quantities = _csv_counted_qty_by_item_name(exp_csv.content.decode("utf-8"))
+    xlsx_quantities = _xlsx_counted_qty_by_item_name(exp_xlsx.content)
+    assert {name: csv_quantities[name] for name in expected} == expected
+    assert {name: xlsx_quantities[name] for name in expected} == expected
+
+
+def test_closed_session_pf_snapshot_item_exported_to_semifinished_sheet(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+    db_session,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    item_name = "Deleted entry \u043f/\u0444 snapshot"
+
+    item_response = client.post(
+        "/items",
+        headers=auth_headers,
+        json={
+            "product_code": "80105",
+            "name": item_name,
+            "unit": "pcs",
+            "warehouse_id": warehouse.id,
+            "step": 1.0,
+        },
+    )
+    assert item_response.status_code == 200
+    item_id = item_response.json()["id"]
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    add = client.post(
+        f"/inventory/sessions/{session_id}/entries",
+        headers=auth_headers,
+        json={"item_id": item_id, "quantity": 9, "mode": "set"},
+    )
+    assert add.status_code == 200
+    close = client.post(f"/inventory/sessions/{session_id}/close", headers=auth_headers)
+    assert close.status_code == 200
+
+    item = db_session.query(Item).filter(Item.id == item_id).first()
+    assert item is not None
+    item.is_active = False
+    db_session.add(item)
+    db_session.commit()
+
+    delete = client.delete(
+        f"/inventory/sessions/{session_id}/entries/{item_id}",
+        headers=auth_headers,
+    )
+    assert delete.status_code == 204
+
+    exp_xlsx = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert exp_xlsx.status_code == 200
+    workbook = load_workbook(filename=BytesIO(exp_xlsx.content), data_only=True)
+    assert ACCOUNTING_SEMIFINISHED_SHEET_TITLE in workbook.sheetnames
+    assert _xlsx_qty_by_item_name_on_sheet(
+        exp_xlsx.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE, item_name
+    ) == 9
 
 
 def test_export_500_rows_completes_quickly(

@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 import logging
 
-from sqlalchemy import and_, case, func, inspect
+from sqlalchemy import and_, func, inspect
 from sqlalchemy.orm import Session, aliased
 
 from app.models.enums import SessionStatus
@@ -69,26 +69,127 @@ def _has_table(db: Session, table_name: str) -> bool:
         return False
 
 
-def fetch_session_export_rows(
-    db: Session, session_id: int
-) -> tuple[SessionExportMeta | None, list[SessionExportRow]]:
+def _is_closed_status(value: object) -> bool:
+    raw_value = getattr(value, "value", value)
+    normalized = str(raw_value).rsplit(".", 1)[-1].strip().lower()
+    return normalized == SessionStatus.CLOSED.value
+
+
+def _session_meta_from_row(row) -> SessionExportMeta:
+    return SessionExportMeta(
+        session_id=int(row.session_id),
+        session_status=str(row.session_status),
+        session_started_at=row.session_started_at,
+        warehouse_name=str(row.warehouse_name),
+        zone_name=str(row.zone_name or ""),
+    )
+
+
+def _fetch_session_meta_row(db: Session, session_id: int):
+    return (
+        db.query(
+            Zone.name.label("zone_name"),
+            Warehouse.name.label("warehouse_name"),
+            InventorySession.id.label("session_id"),
+            InventorySession.status.label("session_status"),
+            InventorySession.created_at.label("session_started_at"),
+            InventorySession.updated_at.label("session_updated_at"),
+            InventorySession.warehouse_id.label("warehouse_id"),
+        )
+        .join(Warehouse, Warehouse.id == InventorySession.warehouse_id)
+        .outerjoin(Zone, Zone.id == Warehouse.zone_id)
+        .filter(InventorySession.id == session_id)
+        .first()
+    )
+
+
+def _station_department_value(value: object) -> str:
+    return str(value.value) if hasattr(value, "value") else str(value or "")
+
+
+def _snapshot_export_rows(db: Session, session_id: int) -> list[SessionExportRow]:
     warehouse_zone = aliased(Zone)
     counted_zone = aliased(Zone)
 
-    has_totals_table = _has_table(db, InventorySessionTotal.__tablename__)
-
-    if has_totals_table:
-        quantity_expr = case(
-            (
-                InventorySession.status == SessionStatus.CLOSED,
-                func.coalesce(InventorySessionTotal.qty_final, InventoryEntry.quantity),
+    rows = (
+        db.query(
+            warehouse_zone.name.label("zone_name"),
+            Warehouse.name.label("warehouse_name"),
+            InventorySession.id.label("session_id"),
+            InventorySession.status.label("session_status"),
+            InventorySession.created_at.label("session_started_at"),
+            InventorySession.updated_at.label("session_updated_at"),
+            Item.name.label("item_name"),
+            Item.id.label("item_id"),
+            Item.product_code.label("product_code"),
+            Item.unit.label("item_unit"),
+            Item.step.label("step"),
+            ItemCategory.name.label("category_name"),
+            User.username.label("updated_by"),
+            InventoryEntry.counted_outside_zone.label("counted_outside_zone"),
+            counted_zone.name.label("counted_by_zone_name"),
+            Station.name.label("station_name"),
+            Station.department.label("station_department"),
+            InventoryEntry.updated_at.label("entry_updated_at"),
+            InventorySessionTotal.qty_final.label("qty"),
+            InventorySessionTotal.unit.label("snapshot_unit"),
+        )
+        .select_from(InventorySessionTotal)
+        .join(InventorySession, InventorySession.id == InventorySessionTotal.session_id)
+        .join(Warehouse, Warehouse.id == InventorySession.warehouse_id)
+        .outerjoin(warehouse_zone, warehouse_zone.id == Warehouse.zone_id)
+        .join(Item, Item.id == InventorySessionTotal.item_id)
+        .outerjoin(ItemCategory, ItemCategory.id == Item.category_id)
+        .outerjoin(
+            InventoryEntry,
+            and_(
+                InventoryEntry.session_id == InventorySessionTotal.session_id,
+                InventoryEntry.item_id == InventorySessionTotal.item_id,
             ),
-            else_=InventoryEntry.quantity,
-        ).label("qty")
-    else:
-        quantity_expr = InventoryEntry.quantity.label("qty")
+        )
+        .outerjoin(counted_zone, counted_zone.id == InventoryEntry.counted_by_zone_id)
+        .outerjoin(User, User.id == InventoryEntry.updated_by_user_id)
+        .outerjoin(Station, Station.id == InventoryEntry.station_id)
+        .filter(InventorySessionTotal.session_id == session_id)
+        .order_by(
+            func.coalesce(ItemCategory.name, "Uncategorized").asc(),
+            Item.name.asc(),
+            InventorySessionTotal.id.asc(),
+        )
+        .all()
+    )
 
-    query = (
+    return [
+        SessionExportRow(
+            item_id=int(row.item_id),
+            product_code=(str(row.product_code) if row.product_code else ""),
+            zone=str(row.zone_name or ""),
+            warehouse=str(row.warehouse_name),
+            session_id=int(row.session_id),
+            session_status=str(row.session_status),
+            item=str(row.item_name),
+            unit=str(row.snapshot_unit or row.item_unit or ""),
+            step=Decimal(str(row.step)),
+            qty=Decimal(str(row.qty)),
+            category=str(row.category_name or ""),
+            counted_outside_zone=bool(row.counted_outside_zone),
+            counted_by_zone_name=str(row.counted_by_zone_name or ""),
+            updated_at=row.entry_updated_at
+            or row.session_updated_at
+            or row.session_started_at,
+            updated_by=str(row.updated_by or ""),
+            station_name=str(row.station_name or ""),
+            station_department=_station_department_value(row.station_department),
+        )
+        for row in rows
+    ]
+
+
+def _live_entry_export_rows(db: Session, session_id: int) -> list[SessionExportRow]:
+    warehouse_zone = aliased(Zone)
+    counted_zone = aliased(Zone)
+
+    rows = (
         db.query(
             warehouse_zone.name.label("zone_name"),
             Warehouse.name.label("warehouse_name"),
@@ -107,7 +208,7 @@ def fetch_session_export_rows(
             Station.name.label("station_name"),
             Station.department.label("station_department"),
             InventoryEntry.updated_at.label("updated_at"),
-            quantity_expr,
+            InventoryEntry.quantity.label("qty"),
         )
         .join(InventorySession, InventorySession.id == InventoryEntry.session_id)
         .join(Warehouse, Warehouse.id == InventorySession.warehouse_id)
@@ -123,119 +224,106 @@ def fetch_session_export_rows(
             Item.name.asc(),
             InventoryEntry.id.asc(),
         )
+        .all()
     )
 
-    if has_totals_table:
-        query = query.outerjoin(
-            InventorySessionTotal,
-            and_(
-                InventorySessionTotal.session_id == InventoryEntry.session_id,
-                InventorySessionTotal.item_id == InventoryEntry.item_id,
-            ),
+    return [
+        SessionExportRow(
+            item_id=int(row.item_id),
+            product_code=(str(row.product_code) if row.product_code else ""),
+            zone=str(row.zone_name or ""),
+            warehouse=str(row.warehouse_name),
+            session_id=int(row.session_id),
+            session_status=str(row.session_status),
+            item=str(row.item_name),
+            unit=str(row.unit),
+            step=Decimal(str(row.step)),
+            qty=Decimal(str(row.qty)),
+            category=str(row.category_name or ""),
+            counted_outside_zone=bool(row.counted_outside_zone),
+            counted_by_zone_name=str(row.counted_by_zone_name or ""),
+            updated_at=row.updated_at,
+            updated_by=str(row.updated_by),
+            station_name=str(row.station_name or ""),
+            station_department=_station_department_value(row.station_department),
         )
+        for row in rows
+    ]
 
-    rows = query.all()
 
-    if rows:
-        head = rows[0]
-        meta = SessionExportMeta(
-            session_id=int(head.session_id),
-            session_status=str(head.session_status),
-            session_started_at=head.session_started_at,
-            warehouse_name=str(head.warehouse_name),
-            zone_name=str(head.zone_name or ""),
-        )
-        prepared_rows = [
-            SessionExportRow(
-                item_id=int(row.item_id),
-                product_code=(str(row.product_code) if row.product_code else ""),
-                zone=str(row.zone_name or ""),
-                warehouse=str(row.warehouse_name),
-                session_id=int(row.session_id),
-                session_status=str(row.session_status),
-                item=str(row.item_name),
-                unit=str(row.unit),
-                step=Decimal(str(row.step)),
-                qty=Decimal(str(row.qty)),
-                category=str(row.category_name or ""),
-                counted_outside_zone=bool(row.counted_outside_zone),
-                counted_by_zone_name=str(row.counted_by_zone_name or ""),
-                updated_at=row.updated_at,
-                updated_by=str(row.updated_by),
-                station_name=str(row.station_name or ""),
-                station_department=(
-                    str(row.station_department.value)
-                    if hasattr(row.station_department, "value")
-                    else str(row.station_department or "")
-                ),
-            )
-            for row in rows
-        ]
-        return meta, prepared_rows
-
-    meta_row = (
-        db.query(
-            Zone.name.label("zone_name"),
-            Warehouse.name.label("warehouse_name"),
-            InventorySession.id.label("session_id"),
-            InventorySession.status.label("session_status"),
-            InventorySession.created_at.label("session_started_at"),
-        )
-        .join(Warehouse, Warehouse.id == InventorySession.warehouse_id)
-        .outerjoin(Zone, Zone.id == Warehouse.zone_id)
-        .filter(InventorySession.id == session_id)
-        .first()
-    )
-
+def fetch_session_export_rows(
+    db: Session, session_id: int
+) -> tuple[SessionExportMeta | None, list[SessionExportRow]]:
+    meta_row = _fetch_session_meta_row(db, session_id)
     if not meta_row:
         return None, []
+    meta = _session_meta_from_row(meta_row)
+    has_totals_table = _has_table(db, InventorySessionTotal.__tablename__)
+    if _is_closed_status(meta_row.session_status):
+        if not has_totals_table:
+            log.warning(
+                "inventory_export_closed_snapshot_missing_table",
+                extra={
+                    "event": "inventory_export_closed_snapshot_missing_table",
+                    "session_id": session_id,
+                },
+            )
+            return meta, []
+        return meta, _snapshot_export_rows(db=db, session_id=session_id)
 
-    meta = SessionExportMeta(
-        session_id=int(meta_row.session_id),
-        session_status=str(meta_row.session_status),
-        session_started_at=meta_row.session_started_at,
-        warehouse_name=str(meta_row.warehouse_name),
-        zone_name=str(meta_row.zone_name or ""),
+    return meta, _live_entry_export_rows(db=db, session_id=session_id)
+
+
+def _snapshot_catalog_quantity_rows(db: Session, session_id: int):
+    return (
+        db.query(
+            Item.id.label("item_id"),
+            Item.product_code.label("product_code"),
+            Item.name.label("item_name"),
+            Item.unit.label("item_unit"),
+            InventorySessionTotal.unit.label("snapshot_unit"),
+            InventorySessionTotal.qty_final.label("qty"),
+        )
+        .select_from(InventorySessionTotal)
+        .join(Item, Item.id == InventorySessionTotal.item_id)
+        .filter(InventorySessionTotal.session_id == session_id)
+        .order_by(Item.product_code.asc(), Item.name.asc(), Item.id.asc())
+        .all()
     )
-    return meta, []
+
+
+def _live_catalog_quantity_rows(db: Session, session_id: int):
+    return (
+        db.query(
+            Item.id.label("item_id"),
+            Item.product_code.label("product_code"),
+            Item.name.label("item_name"),
+            Item.unit.label("item_unit"),
+            InventoryEntry.quantity.label("qty"),
+        )
+        .join(Item, Item.id == InventoryEntry.item_id)
+        .filter(InventoryEntry.session_id == session_id)
+        .order_by(Item.product_code.asc(), Item.name.asc(), Item.id.asc())
+        .all()
+    )
 
 
 def fetch_session_catalog_export_rows(
     db: Session,
     session_id: int,
 ) -> tuple[SessionExportMeta | None, list[SessionCatalogExportRow]]:
-    meta_row = (
-        db.query(
-            Zone.name.label("zone_name"),
-            Warehouse.name.label("warehouse_name"),
-            InventorySession.id.label("session_id"),
-            InventorySession.status.label("session_status"),
-            InventorySession.created_at.label("session_started_at"),
-            InventorySession.warehouse_id.label("warehouse_id"),
-        )
-        .join(Warehouse, Warehouse.id == InventorySession.warehouse_id)
-        .outerjoin(Zone, Zone.id == Warehouse.zone_id)
-        .filter(InventorySession.id == session_id)
-        .first()
-    )
-
+    meta_row = _fetch_session_meta_row(db, session_id)
     if not meta_row:
         return None, []
 
-    meta = SessionExportMeta(
-        session_id=int(meta_row.session_id),
-        session_status=str(meta_row.session_status),
-        session_started_at=meta_row.session_started_at,
-        warehouse_name=str(meta_row.warehouse_name),
-        zone_name=str(meta_row.zone_name or ""),
-    )
+    meta = _session_meta_from_row(meta_row)
 
     catalog_rows = (
         db.query(
             Item.id.label("item_id"),
             Item.product_code.label("product_code"),
             Item.name.label("item_name"),
-            Item.unit.label("unit"),
+            Item.unit.label("item_unit"),
         )
         .filter(
             Item.warehouse_id == int(meta_row.warehouse_id),
@@ -246,56 +334,39 @@ def fetch_session_catalog_export_rows(
     )
 
     has_totals_table = _has_table(db, InventorySessionTotal.__tablename__)
-    if has_totals_table:
-        entry_qty_expr = case(
-            (
-                InventorySession.status == SessionStatus.CLOSED,
-                func.coalesce(InventorySessionTotal.qty_final, InventoryEntry.quantity),
-            ),
-            else_=InventoryEntry.quantity,
-        ).label("qty")
+    if _is_closed_status(meta_row.session_status):
+        if has_totals_table:
+            session_quantity_rows = _snapshot_catalog_quantity_rows(
+                db=db, session_id=session_id
+            )
+        else:
+            log.warning(
+                "inventory_export_closed_snapshot_missing_table",
+                extra={
+                    "event": "inventory_export_closed_snapshot_missing_table",
+                    "session_id": session_id,
+                },
+            )
+            session_quantity_rows = []
     else:
-        entry_qty_expr = InventoryEntry.quantity.label("qty")
-
-    session_entry_query = (
-        db.query(
-            Item.id.label("item_id"),
-            Item.product_code.label("product_code"),
-            Item.name.label("item_name"),
-            Item.unit.label("unit"),
-            entry_qty_expr,
-        )
-        .join(Item, Item.id == InventoryEntry.item_id)
-        .join(InventorySession, InventorySession.id == InventoryEntry.session_id)
-        .filter(InventoryEntry.session_id == session_id)
-        .order_by(Item.product_code.asc(), Item.name.asc(), Item.id.asc())
-    )
-    if has_totals_table:
-        session_entry_query = session_entry_query.outerjoin(
-            InventorySessionTotal,
-            and_(
-                InventorySessionTotal.session_id == InventoryEntry.session_id,
-                InventorySessionTotal.item_id == InventoryEntry.item_id,
-            ),
-        )
-
-    session_entry_rows = session_entry_query.all()
+        session_quantity_rows = _live_catalog_quantity_rows(db=db, session_id=session_id)
 
     qty_by_item_id: dict[int, Decimal] = {}
     fallback_rows: list[SessionCatalogExportRow] = []
     catalog_item_ids = {int(row.item_id) for row in catalog_rows}
 
-    for row in session_entry_rows:
+    for row in session_quantity_rows:
         item_id = int(row.item_id)
         qty_by_item_id[item_id] = Decimal(str(row.qty))
         if item_id in catalog_item_ids:
             continue
+        unit = str(getattr(row, "snapshot_unit", None) or row.item_unit or "")
         fallback_rows.append(
             SessionCatalogExportRow(
                 item_id=item_id,
                 product_code=(str(row.product_code) if row.product_code else ""),
                 name=str(row.item_name or ""),
-                unit=str(row.unit or ""),
+                unit=unit,
                 qty=Decimal(str(row.qty)),
             )
         )
@@ -305,7 +376,7 @@ def fetch_session_catalog_export_rows(
             item_id=int(row.item_id),
             product_code=(str(row.product_code) if row.product_code else ""),
             name=str(row.item_name or ""),
-            unit=str(row.unit or ""),
+            unit=str(row.item_unit or ""),
             qty=qty_by_item_id.get(int(row.item_id)),
         )
         for row in catalog_rows

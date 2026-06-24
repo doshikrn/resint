@@ -78,6 +78,7 @@ from app.services.export import (
     is_semifinished_item,
     sort_export_rows_by_item_name,
 )
+from app.services.export_diagnostics import build_session_export_diagnostics
 from app.services.export_repository import (
     fetch_session_catalog_export_rows,
     fetch_session_export_rows,
@@ -98,6 +99,23 @@ from app.routers.inventory._helpers import (
 router = APIRouter()
 
 log = logging.getLogger("app")
+
+
+@router.get("/sessions/{session_id}/export/diagnostics")
+def export_session_diagnostics(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    session = _get_session_or_404(
+        db=db, session_id=session_id, current_user=current_user
+    )
+    if not can_export(current_user.role):
+        raise HTTPException(status_code=403, detail="Insufficient role to export")
+    if not can_access_all_warehouses(current_user.role):
+        _require_access_to_warehouse(session, current_user)
+
+    return build_session_export_diagnostics(db=db, session_id=session_id)
 
 
 @router.get("/reports/session/{session_id}", response_model=InventorySessionReportOut)
