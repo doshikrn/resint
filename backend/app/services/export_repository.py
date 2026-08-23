@@ -59,6 +59,7 @@ class SessionCatalogExportRow:
     name: str
     unit: str
     qty: Decimal | None
+    category: str
 
 
 def _has_table(db: Session, table_name: str) -> bool:
@@ -174,9 +175,7 @@ def _snapshot_export_rows(db: Session, session_id: int) -> list[SessionExportRow
             category=str(row.category_name or ""),
             counted_outside_zone=bool(row.counted_outside_zone),
             counted_by_zone_name=str(row.counted_by_zone_name or ""),
-            updated_at=row.entry_updated_at
-            or row.session_updated_at
-            or row.session_started_at,
+            updated_at=row.entry_updated_at or row.session_updated_at or row.session_started_at,
             updated_by=str(row.updated_by or ""),
             station_name=str(row.station_name or ""),
             station_department=_station_department_value(row.station_department),
@@ -281,11 +280,13 @@ def _snapshot_catalog_quantity_rows(db: Session, session_id: int):
             Item.product_code.label("product_code"),
             Item.name.label("item_name"),
             Item.unit.label("item_unit"),
+            ItemCategory.name.label("category_name"),
             InventorySessionTotal.unit.label("snapshot_unit"),
             InventorySessionTotal.qty_final.label("qty"),
         )
         .select_from(InventorySessionTotal)
         .join(Item, Item.id == InventorySessionTotal.item_id)
+        .outerjoin(ItemCategory, ItemCategory.id == Item.category_id)
         .filter(InventorySessionTotal.session_id == session_id)
         .order_by(Item.product_code.asc(), Item.name.asc(), Item.id.asc())
         .all()
@@ -299,9 +300,11 @@ def _live_catalog_quantity_rows(db: Session, session_id: int):
             Item.product_code.label("product_code"),
             Item.name.label("item_name"),
             Item.unit.label("item_unit"),
+            ItemCategory.name.label("category_name"),
             InventoryEntry.quantity.label("qty"),
         )
         .join(Item, Item.id == InventoryEntry.item_id)
+        .outerjoin(ItemCategory, ItemCategory.id == Item.category_id)
         .filter(InventoryEntry.session_id == session_id)
         .order_by(Item.product_code.asc(), Item.name.asc(), Item.id.asc())
         .all()
@@ -324,7 +327,9 @@ def fetch_session_catalog_export_rows(
             Item.product_code.label("product_code"),
             Item.name.label("item_name"),
             Item.unit.label("item_unit"),
+            ItemCategory.name.label("category_name"),
         )
+        .outerjoin(ItemCategory, ItemCategory.id == Item.category_id)
         .filter(
             Item.warehouse_id == int(meta_row.warehouse_id),
             Item.is_active.is_(True),
@@ -336,9 +341,7 @@ def fetch_session_catalog_export_rows(
     has_totals_table = _has_table(db, InventorySessionTotal.__tablename__)
     if _is_closed_status(meta_row.session_status):
         if has_totals_table:
-            session_quantity_rows = _snapshot_catalog_quantity_rows(
-                db=db, session_id=session_id
-            )
+            session_quantity_rows = _snapshot_catalog_quantity_rows(db=db, session_id=session_id)
         else:
             log.warning(
                 "inventory_export_closed_snapshot_missing_table",
@@ -368,6 +371,7 @@ def fetch_session_catalog_export_rows(
                 name=str(row.item_name or ""),
                 unit=unit,
                 qty=Decimal(str(row.qty)),
+                category=str(row.category_name or ""),
             )
         )
 
@@ -378,12 +382,15 @@ def fetch_session_catalog_export_rows(
             name=str(row.item_name or ""),
             unit=str(row.item_unit or ""),
             qty=qty_by_item_id.get(int(row.item_id)),
+            category=str(row.category_name or ""),
         )
         for row in catalog_rows
     ]
 
     if fallback_rows:
-        fallback_rows.sort(key=lambda row: (row.product_code.lower(), row.name.lower(), row.item_id))
+        fallback_rows.sort(
+            key=lambda row: (row.product_code.lower(), row.name.lower(), row.item_id)
+        )
         log.error(
             "inventory_export_xlsx_catalog_gap",
             extra={

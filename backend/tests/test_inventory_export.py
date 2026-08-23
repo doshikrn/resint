@@ -10,8 +10,15 @@ from app.models.user import User
 from app.services.export import (
     ACCOUNTING_SEMIFINISHED_SHEET_TITLE,
     is_semifinished_item,
+    sort_accounting_export_rows,
     sort_export_rows_by_item_name,
 )
+
+ACCOUNTING_GROUP_COLUMN = 1
+ACCOUNTING_CODE_COLUMN = 2
+ACCOUNTING_ITEM_COLUMN = 3
+ACCOUNTING_UNIT_COLUMN = 4
+ACCOUNTING_QTY_COLUMN = 5
 
 
 def test_session_export_csv_returns_attachment_with_expected_headers(
@@ -136,11 +143,18 @@ def test_session_export_xlsx_matches_template_spec(
     assert workbook.sheetnames == ["Товары"]
 
     goods_sheet = workbook["Товары"]
-    assert goods_sheet.cell(row=8, column=1).value == item.product_code
-    assert goods_sheet.cell(row=8, column=2).value == item.name
-    assert goods_sheet.cell(row=8, column=3).value in {"кг", "л", "шт", item.unit}
-    assert isinstance(goods_sheet.cell(row=8, column=4).value, (int, float))
-    assert goods_sheet.cell(row=8, column=4).number_format == "0.###"
+    assert goods_sheet.cell(row=6, column=ACCOUNTING_GROUP_COLUMN).value == "Группа"
+    assert goods_sheet.cell(row=8, column=ACCOUNTING_GROUP_COLUMN).value == "Uncategorized"
+    assert goods_sheet.cell(row=8, column=ACCOUNTING_CODE_COLUMN).value == item.product_code
+    assert goods_sheet.cell(row=8, column=ACCOUNTING_ITEM_COLUMN).value == item.name
+    assert goods_sheet.cell(row=8, column=ACCOUNTING_UNIT_COLUMN).value in {
+        "кг",
+        "л",
+        "шт",
+        item.unit,
+    }
+    assert isinstance(goods_sheet.cell(row=8, column=ACCOUNTING_QTY_COLUMN).value, (int, float))
+    assert goods_sheet.cell(row=8, column=ACCOUNTING_QTY_COLUMN).number_format == "0.###"
 
 
 def test_sort_export_rows_by_item_name_mixed_case_trim_and_stable_ties():
@@ -152,6 +166,24 @@ def test_sort_export_rows_by_item_name_mixed_case_trim_and_stable_ties():
     ]
     sort_export_rows_by_item_name(rows)
     assert [r["Item"] for r in rows] == ["Apple", "aPPle", "  banana ", "zebra"]
+
+
+def test_sort_accounting_export_rows_groups_categories_and_sorts_items():
+    rows = [
+        {"Category": "Овощи", "Item": "Яблоко"},
+        {"Category": "Бакалея", "Item": "Рис"},
+        {"Category": "Бакалея", "Item": "Мука"},
+        {"Category": "", "Item": "Без группы"},
+    ]
+
+    sort_accounting_export_rows(rows)
+
+    assert [(row["Category"], row["Item"]) for row in rows] == [
+        ("Бакалея", "Мука"),
+        ("Бакалея", "Рис"),
+        ("Овощи", "Яблоко"),
+        ("", "Без группы"),
+    ]
 
 
 def test_is_semifinished_item_detects_pf_marker_any_case():
@@ -167,8 +199,8 @@ def _xlsx_goods_rows_on_sheet(content: bytes, sheet_title: str) -> list[tuple[st
     goods_sheet = workbook[sheet_title]
     rows_out: list[tuple[str, str]] = []
     for row_index in range(8, goods_sheet.max_row + 1):
-        code = goods_sheet.cell(row=row_index, column=1).value
-        name = goods_sheet.cell(row=row_index, column=2).value
+        code = goods_sheet.cell(row=row_index, column=ACCOUNTING_CODE_COLUMN).value
+        name = goods_sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
         if code and name:
             rows_out.append((str(code), str(name)))
     return rows_out
@@ -183,11 +215,41 @@ def test_session_export_xlsx_semifinished_sheet_splits_pf_items(
     milk_name = seed_zone_warehouse_item["item"].name
 
     payloads = (
-        {"product_code": "60101", "name": "Соус п/ф томат", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
-        {"product_code": "60102", "name": "П/ф картофель", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
-        {"product_code": "60103", "name": "п/Ф лук", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
-        {"product_code": "60104", "name": "П/Ф рис", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
-        {"product_code": "60105", "name": "Plain Sugar", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+        {
+            "product_code": "60101",
+            "name": "Соус п/ф томат",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+        {
+            "product_code": "60102",
+            "name": "П/ф картофель",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+        {
+            "product_code": "60103",
+            "name": "п/Ф лук",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+        {
+            "product_code": "60104",
+            "name": "П/Ф рис",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+        {
+            "product_code": "60105",
+            "name": "Plain Sugar",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
     )
     created_ids: list[int] = []
     for payload in payloads:
@@ -247,11 +309,9 @@ def test_session_export_xlsx_semifinished_sheet_splits_pf_items(
 
     main_ws = workbook["Товары"]
     pf_ws = workbook[ACCOUNTING_SEMIFINISHED_SHEET_TITLE]
-    main_merged = list(main_ws.merged_cells.ranges)
-    pf_merged = list(pf_ws.merged_cells.ranges)
-    assert len(main_merged) == len(pf_merged)
-    if main_merged:
-        assert str(main_merged[0]) == str(pf_merged[0])
+    required_header_merges = {"A6:A7", "B6:C6", "D6:D7", "E6:E7"}
+    assert required_header_merges <= {str(cell_range) for cell_range in main_ws.merged_cells.ranges}
+    assert required_header_merges <= {str(cell_range) for cell_range in pf_ws.merged_cells.ranges}
 
     def _footer_marker_row(sheet):
         for row_index in range(1, sheet.max_row + 1):
@@ -414,8 +474,8 @@ def _session_export_xlsx_item_names(content: bytes) -> list[str]:
     goods_sheet = workbook["Товары"]
     names: list[str] = []
     for row_index in range(8, goods_sheet.max_row + 1):
-        name = goods_sheet.cell(row=row_index, column=2).value
-        code = goods_sheet.cell(row=row_index, column=1).value
+        name = goods_sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
+        code = goods_sheet.cell(row=row_index, column=ACCOUNTING_CODE_COLUMN).value
         if name and code:
             names.append(str(name))
     return names
@@ -430,9 +490,27 @@ def test_session_export_csv_and_xlsx_share_alphabetical_item_order(
 
     created: dict[str, int] = {}
     for payload in (
-        {"product_code": "50101", "name": "Zulu row", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
-        {"product_code": "50102", "name": "alpha mixed", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
-        {"product_code": "50103", "name": "Mike", "unit": "kg", "warehouse_id": warehouse.id, "step": 0.01},
+        {
+            "product_code": "50101",
+            "name": "Zulu row",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+        {
+            "product_code": "50102",
+            "name": "alpha mixed",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
+        {
+            "product_code": "50103",
+            "name": "Mike",
+            "unit": "kg",
+            "warehouse_id": warehouse.id,
+            "step": 0.01,
+        },
     ):
         r = client.post("/items", headers=auth_headers, json=payload)
         assert r.status_code == 200
@@ -468,7 +546,9 @@ def test_session_export_csv_and_xlsx_share_alphabetical_item_order(
     assert exp_xlsx.status_code == 200
 
     subset = frozenset({"Zulu row", "alpha mixed", "Mike"})
-    csv_subset = [n for n in _session_export_csv_item_names(exp_csv.content.decode("utf-8")) if n in subset]
+    csv_subset = [
+        n for n in _session_export_csv_item_names(exp_csv.content.decode("utf-8")) if n in subset
+    ]
     xlsx_subset = [n for n in _session_export_xlsx_item_names(exp_xlsx.content) if n in subset]
     expected = sorted(subset, key=lambda n: n.strip().lower())
     assert csv_subset == expected
@@ -551,7 +631,9 @@ def test_session_export_fallback_row_sorted_by_item_name_with_catalog_rows(
     assert exp_xlsx.status_code == 200
 
     subset = frozenset({"Apple gap", "Banana line", milk_name})
-    csv_subset = [n for n in _session_export_csv_item_names(exp_csv.content.decode("utf-8")) if n in subset]
+    csv_subset = [
+        n for n in _session_export_csv_item_names(exp_csv.content.decode("utf-8")) if n in subset
+    ]
     xlsx_subset = [n for n in _session_export_xlsx_item_names(exp_xlsx.content) if n in subset]
     expected = sorted(subset, key=lambda n: n.strip().lower())
     assert csv_subset == expected
@@ -782,10 +864,10 @@ def test_session_export_entries_sorted_and_qty_preserved_and_uncategorized(
 
     rows = []
     for row_index in range(8, goods_sheet.max_row + 1):
-        code = goods_sheet.cell(row=row_index, column=1).value
-        name = goods_sheet.cell(row=row_index, column=2).value
-        unit = goods_sheet.cell(row=row_index, column=3).value
-        qty = goods_sheet.cell(row=row_index, column=4).value
+        code = goods_sheet.cell(row=row_index, column=ACCOUNTING_CODE_COLUMN).value
+        name = goods_sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
+        unit = goods_sheet.cell(row=row_index, column=ACCOUNTING_UNIT_COLUMN).value
+        qty = goods_sheet.cell(row=row_index, column=ACCOUNTING_QTY_COLUMN).value
         if code and name:
             rows.append((str(code), str(name), str(unit), qty))
 
@@ -844,11 +926,11 @@ def test_export_xlsx_keeps_fractional_precision_for_qty_915(
     goods_sheet = workbook["Товары"]
 
     qty_by_item_name = {
-        str(goods_sheet.cell(row=row_index, column=2).value): goods_sheet.cell(
-            row=row_index, column=4
+        str(goods_sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value): goods_sheet.cell(
+            row=row_index, column=ACCOUNTING_QTY_COLUMN
         ).value
         for row_index in range(8, goods_sheet.max_row + 1)
-        if goods_sheet.cell(row=row_index, column=2).value
+        if goods_sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
     }
 
     assert qty_by_item_name["Precision Test Item"] == 9.15
@@ -1002,7 +1084,7 @@ def test_export_xlsx_qty_is_numeric_for_excel_sum(
 
     workbook = load_workbook(filename=BytesIO(export.content), data_only=True)
     goods_sheet = workbook["Товары"]
-    assert isinstance(goods_sheet.cell(row=8, column=4).value, (int, float))
+    assert isinstance(goods_sheet.cell(row=8, column=ACCOUNTING_QTY_COLUMN).value, (int, float))
 
 
 def test_export_xlsx_includes_all_catalog_items_and_dash_for_missing_qty(
@@ -1066,12 +1148,12 @@ def test_export_xlsx_includes_all_catalog_items_and_dash_for_missing_qty(
 
     values_by_name = {}
     for row_index in range(8, goods_sheet.max_row + 1):
-        item_name = goods_sheet.cell(row=row_index, column=2).value
+        item_name = goods_sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
         if item_name:
             values_by_name[str(item_name)] = {
-                "code": goods_sheet.cell(row=row_index, column=1).value,
-                "unit": goods_sheet.cell(row=row_index, column=3).value,
-                "qty": goods_sheet.cell(row=row_index, column=4).value,
+                "code": goods_sheet.cell(row=row_index, column=ACCOUNTING_CODE_COLUMN).value,
+                "unit": goods_sheet.cell(row=row_index, column=ACCOUNTING_UNIT_COLUMN).value,
+                "qty": goods_sheet.cell(row=row_index, column=ACCOUNTING_QTY_COLUMN).value,
             }
 
     assert "Measured Item" in values_by_name
@@ -1137,12 +1219,12 @@ def test_export_xlsx_keeps_session_item_even_if_item_is_inactive(
 
     values_by_name = {}
     for row_index in range(8, goods_sheet.max_row + 1):
-        item_name = goods_sheet.cell(row=row_index, column=2).value
+        item_name = goods_sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
         if item_name:
             values_by_name[str(item_name)] = {
-                "code": goods_sheet.cell(row=row_index, column=1).value,
-                "unit": goods_sheet.cell(row=row_index, column=3).value,
-                "qty": goods_sheet.cell(row=row_index, column=4).value,
+                "code": goods_sheet.cell(row=row_index, column=ACCOUNTING_CODE_COLUMN).value,
+                "unit": goods_sheet.cell(row=row_index, column=ACCOUNTING_UNIT_COLUMN).value,
+                "qty": goods_sheet.cell(row=row_index, column=ACCOUNTING_QTY_COLUMN).value,
             }
 
     assert "Лист лайма" in values_by_name
@@ -1211,8 +1293,8 @@ def _xlsx_qty_by_item_name_on_sheet(
     workbook = load_workbook(filename=BytesIO(content), data_only=True)
     sheet = workbook[sheet_name]
     for row_index in range(8, sheet.max_row + 1):
-        if str(sheet.cell(row=row_index, column=2).value or "") == item_name:
-            qty = sheet.cell(row=row_index, column=4).value
+        if str(sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value or "") == item_name:
+            qty = sheet.cell(row=row_index, column=ACCOUNTING_QTY_COLUMN).value
             if qty == "-":
                 return None
             return qty
@@ -1224,8 +1306,11 @@ def _xlsx_qty_by_item_name(content: bytes, item_name: str) -> float | str | None
     for sheet_name in workbook.sheetnames:
         sheet = workbook[sheet_name]
         for row_index in range(8, sheet.max_row + 1):
-            if str(sheet.cell(row=row_index, column=2).value or "") == item_name:
-                qty = sheet.cell(row=row_index, column=4).value
+            if (
+                str(sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value or "")
+                == item_name
+            ):
+                qty = sheet.cell(row=row_index, column=ACCOUNTING_QTY_COLUMN).value
                 if qty == "-":
                     return None
                 return qty
@@ -1237,18 +1322,111 @@ def _csv_counted_qty_by_item_name(body: str) -> dict[str, float]:
     return {str(row["Item"]): float(row["Qty"]) for row in reader if row.get("Item")}
 
 
+def _csv_category_by_item_name(body: str, item_name: str) -> str | None:
+    reader = csv.DictReader(StringIO(body))
+    for row in reader:
+        if row.get("Item") == item_name:
+            return str(row.get("Category") or "")
+    return None
+
+
+def _xlsx_group_by_item_name_on_sheet(content: bytes, sheet_name: str) -> dict[str, str]:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    sheet = workbook[sheet_name]
+    group_by_item_name: dict[str, str] = {}
+    current_group = ""
+    for row_index in range(8, sheet.max_row + 1):
+        group_value = sheet.cell(row=row_index, column=ACCOUNTING_GROUP_COLUMN).value
+        if group_value not in (None, ""):
+            current_group = str(group_value)
+        item_name = sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
+        if item_name:
+            group_by_item_name[str(item_name)] = current_group
+    return group_by_item_name
+
+
 def _xlsx_counted_qty_by_item_name(content: bytes) -> dict[str, float]:
     workbook = load_workbook(filename=BytesIO(content), data_only=True)
     quantities: dict[str, float] = {}
     for sheet_name in workbook.sheetnames:
         sheet = workbook[sheet_name]
         for row_index in range(8, sheet.max_row + 1):
-            item_name = sheet.cell(row=row_index, column=2).value
-            qty = sheet.cell(row=row_index, column=4).value
+            item_name = sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
+            qty = sheet.cell(row=row_index, column=ACCOUNTING_QTY_COLUMN).value
             if not item_name or qty in (None, "-"):
                 continue
             quantities[str(item_name)] = float(qty)
     return quantities
+
+
+def test_session_export_xlsx_adds_group_column_and_merges_category_block(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    category_name = "Овощи, зелень, фрукты"
+    category = client.post(
+        "/items/categories",
+        headers=auth_headers,
+        json={"name": category_name},
+    )
+    assert category.status_code == 201
+
+    item_names = ("Абрикос для группы", "Картофель для группы")
+    for product_code, item_name in zip(("70101", "70102"), item_names, strict=True):
+        response = client.post(
+            "/items",
+            headers=auth_headers,
+            json={
+                "product_code": product_code,
+                "name": item_name,
+                "unit": "kg",
+                "warehouse_id": warehouse.id,
+                "step": 0.01,
+                "category_id": category.json()["id"],
+            },
+        )
+        assert response.status_code == 200
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    export = client.get(
+        f"/inventory/sessions/{active.json()['id']}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert export.status_code == 200
+
+    workbook = load_workbook(filename=BytesIO(export.content), data_only=True)
+    sheet = workbook["Товары"]
+    assert sheet["A6"].value == "Группа"
+    assert sheet["B7"].value == "Код"
+    assert sheet["C7"].value == "Наименование"
+    assert sheet["D6"].value == "Ед. изм."
+    assert sheet["E6"].value == "Остаток фактический"
+    assert str(sheet.print_area).endswith("$A$1:$E$305")
+
+    group_by_item = _xlsx_group_by_item_name_on_sheet(export.content, "Товары")
+    assert {group_by_item[item_name] for item_name in item_names} == {category_name}
+
+    item_rows = [
+        row_index
+        for row_index in range(8, sheet.max_row + 1)
+        if sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value in item_names
+    ]
+    assert len(item_rows) == 2
+    assert item_rows[1] == item_rows[0] + 1
+    assert f"A{item_rows[0]}:A{item_rows[1]}" in {
+        str(cell_range) for cell_range in sheet.merged_cells.ranges
+    }
+    assert [
+        sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value for row_index in item_rows
+    ] == list(item_names)
 
 
 def test_closed_session_export_xlsx_catalog_matches_csv_snapshot_qty(
@@ -1364,12 +1542,17 @@ def test_export_qty_preserved_after_pf_sheet_split(
     )
     assert exp_xlsx.status_code == 200
 
-    assert float(_xlsx_qty_by_item_name_on_sheet(exp_xlsx.content, "Товары", "Zebra Regular")) == 7.77
-    assert float(
-        _xlsx_qty_by_item_name_on_sheet(
-            exp_xlsx.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE, "Тестовая п/ф смесь"
+    assert (
+        float(_xlsx_qty_by_item_name_on_sheet(exp_xlsx.content, "Товары", "Zebra Regular")) == 7.77
+    )
+    assert (
+        float(
+            _xlsx_qty_by_item_name_on_sheet(
+                exp_xlsx.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE, "Тестовая п/ф смесь"
+            )
         )
-    ) == 3.33
+        == 3.33
+    )
 
     exp_csv = client.get(
         f"/inventory/sessions/{session_id}/export",
@@ -1440,7 +1623,9 @@ def test_closed_session_inactive_item_survives_csv_and_xlsx_export_after_close(
     assert exp_csv.status_code == 200
     assert exp_xlsx.status_code == 200
 
-    assert _csv_qty_by_item_name(exp_csv.content.decode("utf-8"), "Closed Inactive Snapshot") == 8.75
+    assert (
+        _csv_qty_by_item_name(exp_csv.content.decode("utf-8"), "Closed Inactive Snapshot") == 8.75
+    )
     assert _xlsx_qty_by_item_name(exp_xlsx.content, "Closed Inactive Snapshot") == 8.75
 
 
@@ -1513,9 +1698,10 @@ def test_export_diagnostics_keeps_snapshot_item_after_live_entry_deleted(
     assert body["counts"]["export_repository_csv_rows"] == 1
     assert item_id in body["stage_item_ids"]["export_repository_catalog_rows"]
     assert item_id in body["stage_item_ids"]["export_repository_csv_rows"]
-    assert body["snapshot_live_gaps"]["snapshot_items_without_inventory_entry"][0][
-        "item_id"
-    ] == item_id
+    assert (
+        body["snapshot_live_gaps"]["snapshot_items_without_inventory_entry"][0]["item_id"]
+        == item_id
+    )
     assert not any(
         loss["from"] == "inventory_session_totals"
         and loss["to"] == "catalog_export_rows"
@@ -1591,8 +1777,7 @@ def test_closed_session_xlsx_keeps_snapshot_item_after_live_entry_deleted(
     assert exp_csv.status_code == 200
     assert _csv_qty_by_item_name(exp_csv.content.decode("utf-8"), "Forensic Snapshot Only") == 4.25
     assert (
-        _xlsx_qty_by_item_name_on_sheet(export.content, "Товары", "Forensic Snapshot Only")
-        == 4.25
+        _xlsx_qty_by_item_name_on_sheet(export.content, "Товары", "Forensic Snapshot Only") == 4.25
     )
 
 
@@ -1697,6 +1882,13 @@ def test_closed_session_pf_snapshot_item_exported_to_semifinished_sheet(
 ):
     warehouse = seed_zone_warehouse_item["warehouse"]
     item_name = "Deleted entry \u043f/\u0444 snapshot"
+    category_name = "Соусы и полуфабрикаты"
+    category = client.post(
+        "/items/categories",
+        headers=auth_headers,
+        json={"name": category_name},
+    )
+    assert category.status_code == 201
 
     item_response = client.post(
         "/items",
@@ -1707,6 +1899,7 @@ def test_closed_session_pf_snapshot_item_exported_to_semifinished_sheet(
             "unit": "pcs",
             "warehouse_id": warehouse.id,
             "step": 1.0,
+            "category_id": category.json()["id"],
         },
     )
     assert item_response.status_code == 200
@@ -1749,9 +1942,26 @@ def test_closed_session_pf_snapshot_item_exported_to_semifinished_sheet(
     assert exp_xlsx.status_code == 200
     workbook = load_workbook(filename=BytesIO(exp_xlsx.content), data_only=True)
     assert ACCOUNTING_SEMIFINISHED_SHEET_TITLE in workbook.sheetnames
-    assert _xlsx_qty_by_item_name_on_sheet(
-        exp_xlsx.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE, item_name
-    ) == 9
+    assert (
+        _xlsx_qty_by_item_name_on_sheet(
+            exp_xlsx.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE, item_name
+        )
+        == 9
+    )
+    assert (
+        _xlsx_group_by_item_name_on_sheet(exp_xlsx.content, ACCOUNTING_SEMIFINISHED_SHEET_TITLE)[
+            item_name
+        ]
+        == category_name
+    )
+
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    assert exp_csv.status_code == 200
+    assert _csv_category_by_item_name(exp_csv.content.decode("utf-8"), item_name) == category_name
 
 
 def test_export_500_rows_completes_quickly(

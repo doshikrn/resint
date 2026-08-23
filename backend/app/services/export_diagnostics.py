@@ -15,7 +15,7 @@ from app.services.export import (
     ACCOUNTING_SEMIFINISHED_SHEET_TITLE,
     build_xlsx_accounting_template_export,
     is_semifinished_item,
-    sort_export_rows_by_item_name,
+    sort_accounting_export_rows,
 )
 from app.services.export_repository import (
     fetch_session_catalog_export_rows,
@@ -57,7 +57,7 @@ def _footer_start_row(sheet) -> int | None:
         "\u043f\u0440\u0438\u043d\u044f\u043b",
     )
     for row_index in range(sheet.max_row, 0, -1):
-        for column_index in range(1, min(sheet.max_column, 4) + 1):
+        for column_index in range(1, min(sheet.max_column, 5) + 1):
             value = sheet.cell(row=row_index, column=column_index).value
             if isinstance(value, str) and any(marker in value for marker in footer_markers):
                 return row_index
@@ -70,8 +70,7 @@ def _count_written_accounting_rows(sheet) -> int:
     count = 0
     for row_index in range(DATA_START_ROW, last_row + 1):
         values = [
-            sheet.cell(row=row_index, column=column_index).value
-            for column_index in range(1, 5)
+            sheet.cell(row=row_index, column=column_index).value for column_index in range(1, 6)
         ]
         if any(value not in (None, "") for value in values):
             count += 1
@@ -82,9 +81,7 @@ def build_session_export_diagnostics(db: Session, session_id: int) -> dict[str, 
     session = db.query(InventorySession).filter(InventorySession.id == session_id).first()
     if session is None:
         return {"session_id": session_id, "exists": False}
-    is_closed = bool(getattr(session, "is_closed", False)) or _is_closed_status(
-        session.status
-    )
+    is_closed = bool(getattr(session, "is_closed", False)) or _is_closed_status(session.status)
 
     entry_rows = (
         db.query(
@@ -144,13 +141,14 @@ def build_session_export_diagnostics(db: Session, session_id: int) -> dict[str, 
             "Item": row.name,
             "Unit": row.unit,
             "Qty": row.qty,
+            "Category": (str(row.category).strip() or "Uncategorized"),
         }
         for row in catalog_rows
     ]
     regular_rows = [row for row in template_rows if not is_semifinished_item(row)]
     semifinished_rows = [row for row in template_rows if is_semifinished_item(row)]
-    sort_export_rows_by_item_name(regular_rows)
-    sort_export_rows_by_item_name(semifinished_rows)
+    sort_accounting_export_rows(regular_rows)
+    sort_accounting_export_rows(semifinished_rows)
 
     workbook_payload = build_xlsx_accounting_template_export(
         [
@@ -159,6 +157,7 @@ def build_session_export_diagnostics(db: Session, session_id: int) -> dict[str, 
                 "Item": row["Item"],
                 "Unit": row["Unit"],
                 "Qty": row["Qty"],
+                "Category": row["Category"],
             }
             for row in regular_rows
         ],
@@ -170,6 +169,7 @@ def build_session_export_diagnostics(db: Session, session_id: int) -> dict[str, 
                         "Item": row["Item"],
                         "Unit": row["Unit"],
                         "Qty": row["Qty"],
+                        "Category": row["Category"],
                     }
                     for row in semifinished_rows
                 ]
@@ -188,9 +188,7 @@ def build_session_export_diagnostics(db: Session, session_id: int) -> dict[str, 
     entry_ids = {int(row.item_id) for row in entry_rows}
     total_ids = {int(row.item_id) for row in total_rows}
     active_catalog_ids = {int(row.id) for row in active_catalog_rows}
-    live_repository_overlay_ids = {
-        int(row.item_id) for row in live_repository_overlay_rows
-    }
+    live_repository_overlay_ids = {int(row.item_id) for row in live_repository_overlay_rows}
     repository_quantity_ids = (
         total_ids if is_closed and totals_table_exists else live_repository_overlay_ids
     )

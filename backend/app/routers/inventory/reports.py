@@ -76,6 +76,7 @@ from app.services.export import (
     build_export_filename,
     build_xlsx_accounting_template_export,
     is_semifinished_item,
+    sort_accounting_export_rows,
     sort_export_rows_by_item_name,
 )
 from app.services.export_diagnostics import build_session_export_diagnostics
@@ -513,13 +514,14 @@ def export_session_report(
                 "Item": row.name,
                 "Unit": row.unit,
                 "Qty": (None if row.qty is None else Decimal(str(row.qty))),
+                "Category": (str(row.category).strip() or "Uncategorized"),
             }
             for row in catalog_rows
         ]
         regular_rows = [r for r in template_rows if not is_semifinished_item(r)]
         semifinished_rows = [r for r in template_rows if is_semifinished_item(r)]
-        sort_export_rows_by_item_name(regular_rows)
-        sort_export_rows_by_item_name(semifinished_rows)
+        sort_accounting_export_rows(regular_rows)
+        sort_accounting_export_rows(semifinished_rows)
     else:
         entries_data: list[dict] = [
             {

@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import csv
 import re
+from copy import copy
 from collections.abc import Iterable
 from datetime import UTC, datetime, timezone, timedelta
 from io import BytesIO, StringIO
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.print_settings import PrintArea
 
 ALMATY_TZ = timezone(timedelta(hours=6))
 
@@ -74,6 +77,25 @@ def sort_export_rows_by_item_name(rows: list[dict]) -> None:
     stable so ties keep their relative order.
     """
     rows.sort(key=lambda r: str(r.get("Item", "") or "").strip().lower())
+
+
+def _accounting_category_label(value: object) -> str:
+    return str(value or "").strip() or "Uncategorized"
+
+
+def sort_accounting_export_rows(rows: list[dict]) -> None:
+    """Group accounting rows by category and keep item names alphabetical inside each group."""
+
+    def sort_key(row: dict) -> tuple[bool, str, str]:
+        category = _accounting_category_label(row.get("Category"))
+        item_name = str(row.get("Item", "") or "").strip()
+        return (
+            category.casefold() == "uncategorized",
+            category.casefold(),
+            item_name.casefold(),
+        )
+
+    rows.sort(key=sort_key)
 
 
 _SEMIFINISHED_MARKER_CF = "п/ф".casefold()
@@ -245,7 +267,7 @@ def _find_footer_start_row(goods_sheet) -> int | None:
         "Инвентаризацию принял",
     )
     for row_index in range(goods_sheet.max_row, 0, -1):
-        for column_index in range(1, min(goods_sheet.max_column, 4) + 1):
+        for column_index in range(1, min(goods_sheet.max_column, 5) + 1):
             value = goods_sheet.cell(row=row_index, column=column_index).value
             if not isinstance(value, str):
                 continue
@@ -259,26 +281,93 @@ def _clear_accounting_goods_data_values(
     *,
     data_start_row: int,
     last_row: int,
-    last_column: int = 4,
+    last_column: int = 5,
 ) -> None:
-    """Clear product table cell values (default first 4 columns); keeps styles/merged structure."""
+    """Clear product table cell values while preserving the accounting layout."""
     if last_row < data_start_row:
         return
+    _unmerge_accounting_group_data_cells(sheet, data_start_row=data_start_row, last_row=last_row)
     for row_index in range(data_start_row, last_row + 1):
         for col_index in range(1, last_column + 1):
             sheet.cell(row=row_index, column=col_index).value = None
 
 
+def _unmerge_accounting_group_data_cells(
+    sheet,
+    *,
+    data_start_row: int,
+    last_row: int | None = None,
+) -> None:
+    for merged_range in list(sheet.merged_cells.ranges):
+        is_group_data_range = (
+            merged_range.min_col == 1
+            and merged_range.max_col == 1
+            and merged_range.min_row >= data_start_row
+        )
+        if not is_group_data_range:
+            continue
+        if last_row is not None and merged_range.min_row > last_row:
+            continue
+        sheet.unmerge_cells(str(merged_range))
+
+
+def _merge_accounting_group_cells(
+    sheet,
+    rows: list[dict],
+    *,
+    data_start_row: int,
+) -> None:
+    group_start = 0
+    while group_start < len(rows):
+        category = _accounting_category_label(rows[group_start].get("Category"))
+        group_end = group_start
+        while group_end + 1 < len(rows):
+            next_category = _accounting_category_label(rows[group_end + 1].get("Category"))
+            if next_category.casefold() != category.casefold():
+                break
+            group_end += 1
+
+        first_excel_row = data_start_row + group_start
+        last_excel_row = data_start_row + group_end
+        group_cell = sheet.cell(row=first_excel_row, column=1, value=category)
+        group_cell.alignment = Alignment(
+            horizontal="left",
+            vertical="center",
+            wrap_text=True,
+        )
+        if last_excel_row > first_excel_row:
+            sheet.merge_cells(
+                start_row=first_excel_row,
+                start_column=1,
+                end_row=last_excel_row,
+                end_column=1,
+            )
+
+        group_start = group_end + 1
+
+
 def _write_accounting_goods_data_rows(sheet, rows: list[dict], *, data_start_row: int = 8) -> int:
     """Write accounting-style columns for ``rows``. Returns last used data row (may be ``data_start_row - 1``)."""
+    footer_start_row = _find_footer_start_row(sheet)
+    _unmerge_accounting_group_data_cells(
+        sheet,
+        data_start_row=data_start_row,
+        last_row=(footer_start_row - 1) if footer_start_row is not None else None,
+    )
+
     for index, row in enumerate(rows):
         excel_row = data_start_row + index
-        sheet.cell(row=excel_row, column=1, value=str(row.get("ProductCode", "")))
-        sheet.cell(row=excel_row, column=2, value=str(row.get("Item", "")))
-        sheet.cell(row=excel_row, column=3, value=_unit_label_ru(str(row.get("Unit", ""))))
+        sheet.cell(
+            row=excel_row,
+            column=1,
+            value=_accounting_category_label(row.get("Category")),
+        )
+        sheet.cell(row=excel_row, column=2, value=str(row.get("ProductCode", "")))
+        sheet.cell(row=excel_row, column=3, value=str(row.get("Item", "")))
+        sheet.cell(row=excel_row, column=4, value=_unit_label_ru(str(row.get("Unit", ""))))
 
         qty = row.get("Qty")
-        qty_cell = sheet.cell(row=excel_row, column=4)
+        qty_cell = sheet.cell(row=excel_row, column=5)
         if qty is None:
             qty_cell.value = "-"
         else:
@@ -287,6 +376,7 @@ def _write_accounting_goods_data_rows(sheet, rows: list[dict], *, data_start_row
 
     if not rows:
         return data_start_row - 1
+    _merge_accounting_group_cells(sheet, rows, data_start_row=data_start_row)
     return data_start_row + len(rows) - 1
 
 
@@ -297,7 +387,9 @@ def _trim_accounting_goods_table_area(sheet, *, data_start_row: int, last_data_r
         if footer_start_row > last_data_row + 1:
             trailing_count = footer_start_row - last_data_row - 1
             if trailing_count > 0:
+                footer_merges = _pop_merged_ranges_at_or_after(sheet, start_row=footer_start_row)
                 sheet.delete_rows(last_data_row + 1, trailing_count)
+                _restore_shifted_merged_ranges(sheet, footer_merges, row_offset=-trailing_count)
         return
 
     total_rows = sheet.max_row
@@ -306,11 +398,194 @@ def _trim_accounting_goods_table_area(sheet, *, data_start_row: int, last_data_r
         sheet.delete_rows(last_data_row + 1, trailing_count)
 
 
+def _pop_merged_ranges_at_or_after(sheet, *, start_row: int) -> list[tuple[int, int, int, int]]:
+    coordinates: list[tuple[int, int, int, int]] = []
+    for merged_range in list(sheet.merged_cells.ranges):
+        if merged_range.min_row < start_row:
+            continue
+        coordinates.append(
+            (
+                merged_range.min_row,
+                merged_range.min_col,
+                merged_range.max_row,
+                merged_range.max_col,
+            )
+        )
+        sheet.unmerge_cells(str(merged_range))
+    return coordinates
+
+
+def _restore_shifted_merged_ranges(
+    sheet,
+    ranges: list[tuple[int, int, int, int]],
+    *,
+    row_offset: int,
+) -> None:
+    for min_row, min_col, max_row, max_col in ranges:
+        sheet.merge_cells(
+            start_row=min_row + row_offset,
+            start_column=min_col,
+            end_row=max_row + row_offset,
+            end_column=max_col,
+        )
+
+
+def _extend_accounting_template_merges(sheet) -> None:
+    footer_start_row = _find_footer_start_row(sheet)
+    for merged_range in list(sheet.merged_cells.ranges):
+        should_extend = merged_range.max_col == 4 and (
+            merged_range.max_row <= 5
+            or (
+                footer_start_row is not None
+                and merged_range.min_row <= footer_start_row <= merged_range.max_row
+            )
+        )
+        if not should_extend:
+            continue
+        old_coordinate = str(merged_range)
+        new_coordinate = (
+            f"{get_column_letter(merged_range.min_col)}{merged_range.min_row}:"
+            f"E{merged_range.max_row}"
+        )
+        sheet.unmerge_cells(old_coordinate)
+        sheet.merge_cells(new_coordinate)
+
+
+def _extend_accounting_print_area(sheet) -> None:
+    print_area = sheet.print_area
+    if not print_area:
+        return
+    parsed_print_area = PrintArea.from_string(str(print_area))
+    ranges = list(parsed_print_area.ranges)
+    if not ranges:
+        return
+    updated_ranges = []
+    for cell_range in ranges:
+        max_col = 5 if cell_range.max_col == 4 else cell_range.max_col
+        updated_ranges.append(
+            f"{get_column_letter(cell_range.min_col)}{cell_range.min_row}:"
+            f"{get_column_letter(max_col)}{cell_range.max_row}"
+        )
+    sheet.print_area = ",".join(updated_ranges)
+
+
+def _upgrade_legacy_accounting_goods_layout(sheet, *, data_start_row: int = 8) -> None:
+    footer_start_row = _find_footer_start_row(sheet)
+    old_widths = {column: sheet.column_dimensions[column].width for column in ("A", "B", "C", "D")}
+    header_styles = {
+        "product_left": copy(sheet["A6"]._style),
+        "product_right": copy(sheet["B6"]._style),
+        "code": copy(sheet["A7"]._style),
+        "name": copy(sheet["B7"]._style),
+        "unit_top": copy(sheet["C6"]._style),
+        "unit_bottom": copy(sheet["C7"]._style),
+        "qty_top": copy(sheet["D6"]._style),
+        "qty_bottom": copy(sheet["D7"]._style),
+    }
+
+    _extend_accounting_template_merges(sheet)
+    for merged_range in list(sheet.merged_cells.ranges):
+        if merged_range.min_row >= 6 and merged_range.max_row <= 7:
+            sheet.unmerge_cells(str(merged_range))
+
+    for row_index in (6, 7):
+        for column_index in range(1, 6):
+            sheet.cell(row=row_index, column=column_index).value = None
+
+    header_cells = {
+        "A6": ("Группа", header_styles["unit_top"]),
+        "A7": (None, header_styles["unit_bottom"]),
+        "B6": ("Товар", header_styles["product_left"]),
+        "C6": (None, header_styles["product_right"]),
+        "B7": ("Код", header_styles["code"]),
+        "C7": ("Наименование", header_styles["name"]),
+        "D6": ("Ед. изм.", header_styles["unit_top"]),
+        "D7": (None, header_styles["unit_bottom"]),
+        "E6": ("Остаток фактический", header_styles["qty_top"]),
+        "E7": (None, header_styles["qty_bottom"]),
+    }
+    for coordinate, (value, style) in header_cells.items():
+        cell = sheet[coordinate]
+        cell.value = value
+        cell._style = copy(style)
+
+    for coordinate in ("A6:A7", "B6:C6", "D6:D7", "E6:E7"):
+        sheet.merge_cells(coordinate)
+
+    last_template_data_row = footer_start_row - 1 if footer_start_row is not None else sheet.max_row
+    for row_index in range(data_start_row, last_template_data_row + 1):
+        code_style = copy(sheet.cell(row=row_index, column=1)._style)
+        name_style = copy(sheet.cell(row=row_index, column=2)._style)
+        unit_style = copy(sheet.cell(row=row_index, column=3)._style)
+        qty_style = copy(sheet.cell(row=row_index, column=4)._style)
+        sheet.cell(row=row_index, column=1)._style = copy(name_style)
+        sheet.cell(row=row_index, column=1).alignment = Alignment(
+            horizontal="left", vertical="center", wrap_text=True
+        )
+        sheet.cell(row=row_index, column=2)._style = code_style
+        sheet.cell(row=row_index, column=3)._style = name_style
+        sheet.cell(row=row_index, column=4)._style = unit_style
+        sheet.cell(row=row_index, column=5)._style = qty_style
+
+    sheet.column_dimensions["A"].width = 24
+    sheet.column_dimensions["B"].width = old_widths["A"]
+    sheet.column_dimensions["C"].width = old_widths["B"]
+    sheet.column_dimensions["D"].width = old_widths["C"]
+    sheet.column_dimensions["E"].width = old_widths["D"]
+    _extend_accounting_print_area(sheet)
+
+
 def _ensure_accounting_goods_header_row(sheet, *, header_row: int = 7) -> None:
-    sheet.cell(row=header_row, column=1, value="Код").font = Font(bold=True)
-    sheet.cell(row=header_row, column=2, value="Наименование").font = Font(bold=True)
-    sheet.cell(row=header_row, column=3, value="Ед. изм.").font = Font(bold=True)
-    sheet.cell(row=header_row, column=4, value="Остаток фактический").font = Font(bold=True)
+    top_row = header_row - 1
+    sheet.merge_cells(
+        start_row=top_row,
+        start_column=1,
+        end_row=header_row,
+        end_column=1,
+    )
+    sheet.merge_cells(
+        start_row=top_row,
+        start_column=2,
+        end_row=top_row,
+        end_column=3,
+    )
+    sheet.merge_cells(
+        start_row=top_row,
+        start_column=4,
+        end_row=header_row,
+        end_column=4,
+    )
+    sheet.merge_cells(
+        start_row=top_row,
+        start_column=5,
+        end_row=header_row,
+        end_column=5,
+    )
+    for row, column, value in (
+        (top_row, 1, "Группа"),
+        (top_row, 2, "Товар"),
+        (header_row, 2, "Код"),
+        (header_row, 3, "Наименование"),
+        (top_row, 4, "Ед. изм."),
+        (top_row, 5, "Остаток фактический"),
+    ):
+        cell = sheet.cell(row=row, column=column, value=value)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+
+def _ensure_accounting_goods_group_layout(sheet) -> None:
+    if str(sheet["A6"].value or "").strip() == "Группа":
+        return
+    is_legacy_layout = (
+        str(sheet["A6"].value or "").strip() == "Товар"
+        and str(sheet["A7"].value or "").strip() == "Код"
+        and str(sheet["B7"].value or "").strip() == "Наименование"
+    )
+    if is_legacy_layout:
+        _upgrade_legacy_accounting_goods_layout(sheet)
+        return
+    _ensure_accounting_goods_header_row(sheet)
 
 
 def build_xlsx_accounting_template_export(
@@ -327,7 +602,8 @@ def build_xlsx_accounting_template_export(
         workbook = Workbook()
         goods_sheet = workbook.active
         goods_sheet.title = "Товары"
-        _ensure_accounting_goods_header_row(goods_sheet)
+
+    _ensure_accounting_goods_group_layout(goods_sheet)
 
     data_start_row = 8
     normalized_rows = list(rows)
@@ -355,7 +631,12 @@ def build_xlsx_accounting_template_export(
         if footer_row is not None:
             capacity = footer_row - data_start_row
             if m_extra > capacity:
-                pf_sheet.insert_rows(footer_row, amount=m_extra - capacity)
+                inserted_row_count = m_extra - capacity
+                footer_merges = _pop_merged_ranges_at_or_after(pf_sheet, start_row=footer_row)
+                pf_sheet.insert_rows(footer_row, amount=inserted_row_count)
+                _restore_shifted_merged_ranges(
+                    pf_sheet, footer_merges, row_offset=inserted_row_count
+                )
 
         if n_main > 0:
             _clear_accounting_goods_data_values(
