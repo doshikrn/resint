@@ -18,6 +18,7 @@ from app.models.station import Station
 from app.models.user import User
 from app.models.warehouse import Warehouse
 from app.models.zone import Zone
+from app.services.accounting_categories import resolve_accounting_category
 
 log = logging.getLogger(__name__)
 
@@ -172,7 +173,11 @@ def _snapshot_export_rows(db: Session, session_id: int) -> list[SessionExportRow
             unit=str(row.snapshot_unit or row.item_unit or ""),
             step=Decimal(str(row.step)),
             qty=Decimal(str(row.qty)),
-            category=str(row.category_name or ""),
+            category=resolve_accounting_category(
+                row.category_name,
+                product_code=row.product_code,
+                item_name=row.item_name,
+            ),
             counted_outside_zone=bool(row.counted_outside_zone),
             counted_by_zone_name=str(row.counted_by_zone_name or ""),
             updated_at=row.entry_updated_at or row.session_updated_at or row.session_started_at,
@@ -238,7 +243,11 @@ def _live_entry_export_rows(db: Session, session_id: int) -> list[SessionExportR
             unit=str(row.unit),
             step=Decimal(str(row.step)),
             qty=Decimal(str(row.qty)),
-            category=str(row.category_name or ""),
+            category=resolve_accounting_category(
+                row.category_name,
+                product_code=row.product_code,
+                item_name=row.item_name,
+            ),
             counted_outside_zone=bool(row.counted_outside_zone),
             counted_by_zone_name=str(row.counted_by_zone_name or ""),
             updated_at=row.updated_at,
@@ -371,7 +380,11 @@ def fetch_session_catalog_export_rows(
                 name=str(row.item_name or ""),
                 unit=unit,
                 qty=Decimal(str(row.qty)),
-                category=str(row.category_name or ""),
+                category=resolve_accounting_category(
+                    row.category_name,
+                    product_code=row.product_code,
+                    item_name=row.item_name,
+                ),
             )
         )
 
@@ -382,7 +395,11 @@ def fetch_session_catalog_export_rows(
             name=str(row.item_name or ""),
             unit=str(row.item_unit or ""),
             qty=qty_by_item_id.get(int(row.item_id)),
-            category=str(row.category_name or ""),
+            category=resolve_accounting_category(
+                row.category_name,
+                product_code=row.product_code,
+                item_name=row.item_name,
+            ),
         )
         for row in catalog_rows
     ]

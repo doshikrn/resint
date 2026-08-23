@@ -7,6 +7,21 @@ from openpyxl import load_workbook
 from app.models.inventory_entry import InventoryEntry
 from app.models.item import Item
 from app.models.user import User
+from app.services.accounting_categories import (
+    BAKERY,
+    CANNED,
+    CHEESE_AND_DELI,
+    DAIRY,
+    DESSERTS,
+    FROZEN,
+    GROCERY,
+    MEAT,
+    PRODUCE,
+    SEAFOOD,
+    SPICES_AND_SAUCES,
+    UNCATEGORIZED,
+    resolve_accounting_category,
+)
 from app.services.export import (
     ACCOUNTING_SEMIFINISHED_SHEET_TITLE,
     is_semifinished_item,
@@ -144,7 +159,7 @@ def test_session_export_xlsx_matches_template_spec(
 
     goods_sheet = workbook["Товары"]
     assert goods_sheet.cell(row=6, column=ACCOUNTING_GROUP_COLUMN).value == "Группа"
-    assert goods_sheet.cell(row=8, column=ACCOUNTING_GROUP_COLUMN).value == "Uncategorized"
+    assert goods_sheet.cell(row=8, column=ACCOUNTING_GROUP_COLUMN).value == UNCATEGORIZED
     assert goods_sheet.cell(row=8, column=ACCOUNTING_CODE_COLUMN).value == item.product_code
     assert goods_sheet.cell(row=8, column=ACCOUNTING_ITEM_COLUMN).value == item.name
     assert goods_sheet.cell(row=8, column=ACCOUNTING_UNIT_COLUMN).value in {
@@ -184,6 +199,47 @@ def test_sort_accounting_export_rows_groups_categories_and_sorts_items():
         ("Овощи", "Яблоко"),
         ("", "Без группы"),
     ]
+
+
+def test_accounting_category_fallback_prefers_explicit_category_then_reference_code():
+    assert (
+        resolve_accounting_category(
+            "Ручная группа",
+            product_code="01564",
+            item_name="Маффины",
+        )
+        == "Ручная группа"
+    )
+    expected_by_reference_code = {
+        "01564": DESSERTS,
+        "01313": FROZEN,
+        "01082": CANNED,
+        "01145": DAIRY,
+        "01062": GROCERY,
+        "01091": MEAT,
+        "00250": PRODUCE,
+        "01266": SEAFOOD,
+        "01236": SPICES_AND_SAUCES,
+        "02700": CHEESE_AND_DELI,
+        "01151": BAKERY,
+    }
+    for product_code, expected_category in expected_by_reference_code.items():
+        assert (
+            resolve_accounting_category(
+                UNCATEGORIZED,
+                product_code=product_code,
+                item_name="Нейтральное название",
+            )
+            == expected_category
+        )
+    assert (
+        resolve_accounting_category(
+            "",
+            product_code="",
+            item_name="Неизвестная позиция",
+        )
+        == UNCATEGORIZED
+    )
 
 
 def test_is_semifinished_item_detects_pf_marker_any_case():
@@ -305,7 +361,18 @@ def test_session_export_xlsx_semifinished_sheet_splits_pf_items(
         "П/Ф рис",
     }
     assert main_names == sorted(main_names, key=lambda n: n.strip().lower())
-    assert pf_names == sorted(pf_names, key=lambda n: n.strip().lower())
+    expected_pf_rows = [
+        {"Category": SPICES_AND_SAUCES, "Item": "Соус п/ф томат"},
+        {"Category": PRODUCE, "Item": "П/ф картофель"},
+        {"Category": PRODUCE, "Item": "п/Ф лук"},
+        {"Category": GROCERY, "Item": "П/Ф рис"},
+    ]
+    sort_accounting_export_rows(expected_pf_rows)
+    assert pf_names == [row["Item"] for row in expected_pf_rows]
+    assert _xlsx_group_by_item_name_on_sheet(
+        export.content,
+        ACCOUNTING_SEMIFINISHED_SHEET_TITLE,
+    ) == {row["Item"]: row["Category"] for row in expected_pf_rows}
 
     main_ws = workbook["Товары"]
     pf_ws = workbook[ACCOUNTING_SEMIFINISHED_SHEET_TITLE]
@@ -1427,6 +1494,104 @@ def test_session_export_xlsx_adds_group_column_and_merges_category_block(
     assert [
         sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value for row_index in item_rows
     ] == list(item_names)
+
+
+def test_closed_session_uncategorized_pf_items_use_accounting_groups_in_csv_and_xlsx(
+    client,
+    auth_headers,
+    seed_zone_warehouse_item,
+):
+    warehouse = seed_zone_warehouse_item["warehouse"]
+    expected_groups = {
+        "Говядина мякоть отварная П/Ф": MEAT,
+        "Куриное филе в сливочном соусе П/Ф": MEAT,
+        "Демиглас соус П/Ф": SPICES_AND_SAUCES,
+        "Лосось жареный П/Ф": SEAFOOD,
+        "Картофельное пюре П/Ф": PRODUCE,
+        "Жареный рис ланч П/Ф": GROCERY,
+        "Крамбл П/Ф": DESSERTS,
+        "Пассировка на суп ланч П/Ф": PRODUCE,
+    }
+
+    item_ids: list[int] = []
+    for item_name in expected_groups:
+        response = client.post(
+            "/items",
+            headers=auth_headers,
+            json={
+                "name": item_name,
+                "unit": "kg",
+                "warehouse_id": warehouse.id,
+                "step": 0.01,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["category_id"] is None
+        item_ids.append(response.json()["id"])
+
+    active = client.post(
+        "/inventory/sessions/active",
+        headers=auth_headers,
+        json={"warehouse_id": warehouse.id},
+    )
+    assert active.status_code == 200
+    session_id = active.json()["id"]
+
+    for item_id in item_ids:
+        add = client.post(
+            f"/inventory/sessions/{session_id}/entries",
+            headers=auth_headers,
+            json={"item_id": item_id, "quantity": 1.25, "mode": "set"},
+        )
+        assert add.status_code == 200
+
+    close = client.post(f"/inventory/sessions/{session_id}/close", headers=auth_headers)
+    assert close.status_code == 200
+
+    exp_csv = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "csv"},
+    )
+    exp_xlsx = client.get(
+        f"/inventory/sessions/{session_id}/export",
+        headers=auth_headers,
+        params={"format": "xlsx", "template": "accounting_v1"},
+    )
+    assert exp_csv.status_code == 200
+    assert exp_xlsx.status_code == 200
+
+    xlsx_groups = _xlsx_group_by_item_name_on_sheet(
+        exp_xlsx.content,
+        ACCOUNTING_SEMIFINISHED_SHEET_TITLE,
+    )
+    csv_groups = {
+        item_name: _csv_category_by_item_name(
+            exp_csv.content.decode("utf-8"),
+            item_name,
+        )
+        for item_name in expected_groups
+    }
+    assert {item_name: xlsx_groups[item_name] for item_name in expected_groups} == expected_groups
+    assert csv_groups == expected_groups
+    assert UNCATEGORIZED not in xlsx_groups.values()
+
+    workbook = load_workbook(filename=BytesIO(exp_xlsx.content), data_only=True)
+    pf_sheet = workbook[ACCOUNTING_SEMIFINISHED_SHEET_TITLE]
+    meat_rows = [
+        row_index
+        for row_index in range(8, pf_sheet.max_row + 1)
+        if pf_sheet.cell(row=row_index, column=ACCOUNTING_ITEM_COLUMN).value
+        in {
+            "Говядина мякоть отварная П/Ф",
+            "Куриное филе в сливочном соусе П/Ф",
+        }
+    ]
+    assert len(meat_rows) == 2
+    assert meat_rows[1] == meat_rows[0] + 1
+    assert f"A{meat_rows[0]}:A{meat_rows[1]}" in {
+        str(cell_range) for cell_range in pf_sheet.merged_cells.ranges
+    }
 
 
 def test_closed_session_export_xlsx_catalog_matches_csv_snapshot_qty(
